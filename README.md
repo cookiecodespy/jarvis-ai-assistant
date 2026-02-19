@@ -1,86 +1,91 @@
-# ⚡ J.A.R.V.I.S. AI Assistant
+# ◆ J.A.R.V.I.S. GOD MODE
 
-**Just A Rather Very Intelligent System** — Un asistente de IA personal inspirado en el Jarvis de Iron Man.
+**Just A Rather Very Intelligent System** — El asistente personal de IA más avanzado, con interfaz EDEX-UI.
 
-![Python](https://img.shields.io/badge/Python-3.8+-blue) ![Tkinter](https://img.shields.io/badge/GUI-Tkinter-green) ![AI](https://img.shields.io/badge/AI-Gemini%20|%20Groq%20|%20Ollama-orange)
+![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
+![Version](https://img.shields.io/badge/Version-6.1.0-orange.svg)
+![AI](https://img.shields.io/badge/AI-Groq%20|%20Gemini%20|%20Ollama-green.svg)
 
-## 🚀 Versiones
+## ◆ Versiones
 
-| Archivo                  | Versión  | Líneas    | Descripción                |
-| ------------------------ | -------- | --------- | -------------------------- |
-| `jarvis_ai_jeanCarlo.py` | v1.0     | ~140      | Original — Tkinter básico  |
-| `jarvis_pro_ultra.py`    | v2.0     | ~1700     | 60+ comandos, persistencia |
-| `jarvis_ultimate.py`     | v3.5     | ~1500     | Voz + IA multi-proveedor   |
-| **`jarvis_god_mode.py`** | **v4.2** | **~2200** | **La versión definitiva**  |
+| Archivo | Versión | Descripción |
+|---------|---------|-------------|
+| **`jarvis_god_mode.py`** | **v6.1.0** | **Versión principal — La más avanzada** |
+| `jarvis_pro_ultra.py` | v2.0.0 | Versión anterior — Referencia |
 
-## ✨ Características (God Mode v4.2)
+## ◆ Características
 
-- 🧠 **IA Multi-proveedor**: Gemini (gratis), Groq (gratis), Ollama (local), OpenAI
-- 🔊 **Edge TTS**: Voces ultra realistas de Microsoft (6 voces en español)
-- 🎤 **Reconocimiento de voz**: Di comandos por micrófono
-- 👂 **Wake Word**: Di "Jarvis" para activar manos libres
-- ⌨️ **Typewriter Effect**: Texto aparece carácter por carácter
-- 🌤️ **Clima en tiempo real**: Cualquier ciudad (gratis, sin API key)
-- 🌐 **Traductor**: MyMemory API (gratis)
-- 📰 **Noticias en vivo**: RSS feeds
-- 🍅 **Pomodoro Timer**: Productividad con alertas de voz
-- 📅 **Scheduler**: Tareas programadas recurrentes
-- 🔍 **Buscador de archivos**: Busca en todo tu PC
-- 💀 **Administrador de procesos**: Kill de procesos
-- 📋 **Historial del portapapeles**: Últimas 50 copias
-- 📝 **Notas y Tareas**: Persistentes en disco
-- 🔐 **Generador de contraseñas**: Con copia automática
-- 💻 **Terminal integrado**: Ejecuta comandos del sistema
-- 📸 **Capturas de pantalla**: Desde el chat
-- 🎨 **4 Temas visuales**: Jarvis, Iron Man, Matrix, F.R.I.D.A.Y. (cambio en vivo)
-- 🔔 **Sistema de alertas con sonido**: Beeps integrados
-- 📊 **Monitor CPU/RAM en tiempo real**: En la sidebar
-- 💾 **Exportar conversaciones**: Guardar chat a archivo
+### IA Multi-proveedor
+- Groq (gratis, ultra rápido) / Gemini (gratis) / Ollama (local) / OpenAI
+- Memoria de conversación persistente
+- Ejecución de comandos por lenguaje natural
 
-## 📦 Instalación
+### Productividad
+- Notas y tareas con persistencia
+- Pomodoro timer + modo estudio (estudiar 45)
+- Cronómetro, temporizador, calculadora científica
+- Conversor de unidades, generador de contraseñas
+- Base64, Hash, test de velocidad de escritura
+
+### Universidad & Trabajo
+- Atajos: Google Docs, Sheets, Slides, Drive, Classroom
+- Gmail, Calendar, GitHub, ChatGPT, Canva, Notion, Trello
+- Wikipedia instant, reloj mundial, contador de palabras
+
+### Sistema
+- Monitor CPU/RAM en tiempo real con arc gauges
+- Visor de procesos, IP pública, búsqueda de archivos
+
+### Voz
+- Edge TTS (voces ultra realistas), reconocimiento de voz
+- Wake word "Jarvis", modo escucha continua
+
+### Visual (EDEX-UI)
+- 4 temas: Jarvis, Iron Man, Matrix, F.R.I.D.A.Y.
+- Matrix rain, network pulse, glitch title effect
+- Boot cinematográfico + barra de progreso + typewriter
+
+## ◆ Instalación
 
 ```bash
-# Clonar
-git clone https://github.com/TU_USUARIO/jarvis-ai-assistant.git
-cd jarvis-ai-assistant
-
-# Instalar dependencias
-pip install edge-tts psutil SpeechRecognition pyaudio
-
-# Ejecutar
+pip install edge-tts psutil SpeechRecognition pyaudio openai pyttsx3
 python jarvis_god_mode.py
 ```
 
-## ⚙️ Setup IA (30 segundos, GRATIS)
+## ◆ Setup IA (30 seg, GRATIS)
 
-1. Ve a https://aistudio.google.com/apikey → Crea una API key
-2. En Jarvis escribe:
-   ```
-   config proveedor: gemini
-   config api: TU_KEY
-   ```
+```
+config proveedor: groq
+config api: TU_KEY
+```
+- Groq: https://console.groq.com/keys
+- Gemini: https://aistudio.google.com/apikey
 
-## 🎮 Comandos Rápidos
+## ◆ Comandos Rápidos
 
-| Comando                | Acción                 |
-| ---------------------- | ---------------------- |
-| `ayuda`                | Ver todos los comandos |
-| `notas`                | Ver notas guardadas    |
-| `tareas`               | Ver tareas pendientes  |
-| `pomodoro 25`          | Iniciar Pomodoro       |
-| `config tema: ironman` | Cambiar tema           |
-| `config voz: dalia`    | Cambiar voz            |
-| `exportar`             | Guardar chat           |
-| `uptime`               | Tiempo activo          |
+| Comando | Acción |
+|---------|--------|
+| `help` | Todos los comandos |
+| `briefing` | Reporte diario |
+| `estudiar 45` | Modo estudio |
+| `calc 2+2` | Calculadora |
+| `wiki Python` | Wikipedia |
+| `docs` / `drive` | Google Apps |
+| `typing` | Test de escritura |
+| `procesos` | Top procesos |
+| `hora en Tokyo` | Reloj mundial |
+| `cronometro` | Cronómetro |
 
-## 🛠️ Tecnologías
+## ◆ Historial
 
-- **Python 3.8+** + Tkinter
-- **Google Gemini** / Groq / Ollama / OpenAI
-- **Edge TTS** (Microsoft Azure Neural Voices)
-- **SpeechRecognition** + PyAudio
-- **psutil** para monitoreo del sistema
+| Versión | Cambios |
+|---------|---------|
+| v6.1.0 | Fix YouTube double-tab, university features, typing test, Wikipedia, world clock |
+| v6.0.0 | 15+ nuevos comandos, fix Edge bug, visual effects |
+| v5.0.1 | Bug fixes (encoding, matrix rain) |
+| v5.0.0 | EDEX-UI visual overhaul |
+| v1.0-v4.2 | Versiones iniciales |
 
-## 📄 Licencia
+## ◆ Licencia
 
-MIT License — Usa, modifica y comparte libremente.
+MIT License

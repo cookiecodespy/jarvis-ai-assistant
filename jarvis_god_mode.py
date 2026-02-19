@@ -220,7 +220,7 @@ PROVIDERS = {
 # ══════════════════════════════════════════════════════════════
 
 APP_NAME = "J.A.R.V.I.S. GOD MODE"
-VERSION = "6.0.0"
+VERSION = "6.1.0"
 START_TIME = time.time()
 DATA_DIR = os.path.join(os.path.expanduser("~"), ".jarvis_god")
 NOTES_FILE = os.path.join(DATA_DIR, "notas.json")
@@ -290,20 +290,23 @@ CAPACIDADES (tienes acceso a estas herramientas - ÚSALAS cuando sea apropiado):
 19. BUSCAR ARCHIVOS: [BUSCAR_ARCHIVO]: nombre_o_patron|carpeta
 20. MATAR PROCESO: [KILL]: nombre_proceso
 
-IMPORTANTE - NOMBRES DE PROGRAMA:
-Cuando uses [ABRIR], escribe el nombre SIN puntuación al final.
-Correcto: [ABRIR]: edge
-Incorrecto: [ABRIR]: edge.
-
-NOTA: El usuario tiene acceso local a estos comandos sin IA:
-cronometro, timer, calc, convertir, dias hasta, briefing, procesos,
-password, base64, hash, mayusculas, minusculas, chiste, frase,
-dado, moneda, buscar archivos.
-Si el usuario pide algo que se puede resolver localmente, puedes decirle que use el comando local.
-
-REGLAS:
-- Puedes usar MÚLTIPLES comandos en una respuesta.
-- Siempre incluye texto además del comando.
+REGLAS CRITICAS:
+- Cuando el usuario pida buscar algo en YouTube, usa SOLO [YOUTUBE]: con las palabras clave.
+  Ejemplo: usuario dice "busca un video de felipe abello" → responde: "Buscando en YouTube, señor. [YOUTUBE]: felipe abello videos"
+  NUNCA pongas URLs de YouTube en el texto. NUNCA uses [WEB] para YouTube. SOLO usa [YOUTUBE].
+- Cuando uses [YOUTUBE], el contenido debe ser SOLO las palabras clave de búsqueda, NO una URL ni una oración.
+  Correcto: [YOUTUBE]: felipe abello videos graciosos
+  Incorrecto: [YOUTUBE]: https://youtube.com/search?q=felipe+abello
+  Incorrecto: [YOUTUBE]: buscar videos de felipe abello en youtube
+- Cuando uses [GOOGLE], el contenido debe ser SOLO las palabras de búsqueda.
+  Correcto: [GOOGLE]: clima santiago chile
+  Incorrecto: [GOOGLE]: https://google.com/search?q=clima
+- NUNCA uses [WEB] y [YOUTUBE] para lo mismo. Elige UNO solo.
+- NUNCA uses [WEB] y [GOOGLE] para lo mismo. Elige UNO solo.
+- Usa SOLO UN comando de búsqueda/web por petición. No dupliques.
+- NUNCA incluyas URLs de búsqueda en tu texto de respuesta.
+- Nombres de programa SIN puntuación: [ABRIR]: edge (NO: edge.)
+- Puedes usar MÚLTIPLES comandos DIFERENTES en una respuesta.
 - Si el usuario pide algo peligroso, ADVIERTE antes.
 - NUNCA expliques tus comandos internos. Solo actúa.
 """
@@ -772,6 +775,7 @@ class ActionExecutor:
     def execute_all(self, ai_response):
         results = []
         clean_text = ai_response
+        self._opened_urls = set()  # Track to prevent duplicate tab opens
 
         patterns = {
             r'\[TERMINAL\]:\s*(.+)': self._run_terminal,
@@ -807,6 +811,11 @@ class ActionExecutor:
                 except Exception as e:
                     results.append(f"Error: {e}")
                 clean_text = clean_text.replace(match.group(0), "").strip()
+
+        # Clean any leftover URLs from the response text (prevents accidental display)
+        clean_text = re.sub(r'https?://(?:www\.)?(?:youtube\.com|youtu\.be|google\.com)\S*', '', clean_text)
+        # Clean up extra whitespace and empty lines
+        clean_text = re.sub(r'\n{3,}', '\n\n', clean_text).strip()
 
         return clean_text, results
 
@@ -883,17 +892,38 @@ class ActionExecutor:
     # ─── Web ─────────────────────────────────────────
 
     def _open_web(self, url):
+        # Avoid opening duplicate YouTube/Google search URLs that the AI sometimes generates
+        url_lower = url.lower().strip()
+        if 'youtube.com/results' in url_lower or 'youtube.com/search' in url_lower:
+            return None  # Already handled by _search_youtube
+        if 'google.com/search' in url_lower:
+            return None  # Already handled by _search_google
         if not url.startswith("http"):
             url = "https://" + url
-        webbrowser.open(url)
+        webbrowser.open_new_tab(url)
         return None
 
     def _search_google(self, query):
-        webbrowser.open(f"https://www.google.com/search?q={urllib.parse.quote(query)}")
+        # Clean the query: remove URLs, extra text, just keep search terms
+        query = query.strip()
+        query = re.sub(r'https?://\S+', '', query).strip()
+        query = re.sub(r'buscar?\s+(en\s+)?google\s*:?\s*', '', query, flags=re.IGNORECASE).strip()
+        if not query:
+            return None
+        url = f"https://www.google.com/search?q={urllib.parse.quote(query)}"
+        webbrowser.open_new_tab(url)
         return None
 
     def _search_youtube(self, query):
-        webbrowser.open(f"https://www.youtube.com/results?search_query={urllib.parse.quote(query)}")
+        # Clean the query: remove URLs, just keep search keywords
+        query = query.strip()
+        query = re.sub(r'https?://\S+', '', query).strip()
+        query = re.sub(r'buscar?\s+(en\s+)?youtube\s*:?\s*', '', query, flags=re.IGNORECASE).strip()
+        query = re.sub(r'videos?\s+de\s+', '', query, flags=re.IGNORECASE).strip()
+        if not query:
+            return None
+        url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(query)}"
+        webbrowser.open_new_tab(url)
         return None
 
     # ─── Notas / Tareas ─────────────────────────────
@@ -1735,14 +1765,17 @@ class JarvisGodMode:
 
         # Quick action buttons (right panel)
         r_btns = [
+            ("▸ BRIEFING", lambda: self._quick_cmd("briefing")),
             ("▸ SISTEMA", lambda: self._quick_cmd("info del sistema")),
-            ("▸ CPU/RAM", lambda: self._quick_cmd("cpu y ram")),
             ("▸ CLIMA", lambda: self._quick_cmd("clima de mi ciudad")),
             ("▸ NOTICIAS", lambda: self._quick_cmd("noticias de hoy")),
-            ("▸ BRIEFING", lambda: self._quick_cmd("briefing")),
             ("▸ PROCESOS", lambda: self._quick_cmd("procesos")),
+            ("▸ WIKI", lambda: self._quick_cmd("wiki Python")),
+            ("▸ DRIVE", lambda: self._quick_cmd("drive")),
+            ("▸ GMAIL", lambda: self._quick_cmd("gmail")),
+            ("▸ GITHUB", lambda: self._quick_cmd("github")),
+            ("▸ TYPING", lambda: self._quick_cmd("typing")),
             ("▸ CALC", lambda: self._quick_cmd("calc 2+2")),
-            ("▸ NOTAS", lambda: self._quick_cmd("mis notas")),
             ("▸ TAREAS", lambda: self._quick_cmd("mis tareas")),
             ("▸ PASSWORD", lambda: self._quick_cmd("contraseña de 20")),
             ("▸ HELP", lambda: self._quick_cmd("help")),
@@ -2464,6 +2497,64 @@ class JarvisGodMode:
         except Exception as e:
             self._print_jarvis(f"Error obteniendo procesos: {e}")
 
+    def _start_typing_test(self):
+        """Start a typing speed test."""
+        sentences = [
+            "El veloz murciélago hindú comía feliz cardillo y kiwi.",
+            "La programación es el arte de organizar la complejidad.",
+            "Python es un lenguaje de programación muy versátil.",
+            "El sistema operativo gestiona todos los recursos del hardware.",
+            "Los algoritmos son la base de la informática moderna.",
+            "La inteligencia artificial transformará el mundo laboral.",
+            "Un buen código se lee como un buen libro.",
+            "La ciberseguridad protege nuestros datos digitales.",
+        ]
+        sentence = random.choice(sentences)
+        self._typing_test_sentence = sentence
+        self._typing_test_start = time.time()
+        self._print(f"\n◈ TYPING TEST — Escribe esta frase exacta:\n", "info")
+        self._print(f"  \"{sentence}\"\n", "hud")
+        self._print("  Escríbela y presiona Enter...\n", "muted")
+        self._typing_test_active = True
+
+    def _check_typing_test(self, user_input):
+        """Check typing test results."""
+        elapsed = time.time() - self._typing_test_start
+        original = self._typing_test_sentence
+        self._typing_test_active = False
+
+        # Calculate WPM
+        word_count = len(original.split())
+        wpm = (word_count / elapsed) * 60
+
+        # Calculate accuracy
+        correct = sum(1 for a, b in zip(user_input, original) if a == b)
+        total = max(len(original), len(user_input))
+        accuracy = (correct / total) * 100 if total > 0 else 0
+
+        # Rating
+        if wpm > 80 and accuracy > 95:
+            rating = "EXCEPCIONAL"
+        elif wpm > 60 and accuracy > 90:
+            rating = "MUY BUENO"
+        elif wpm > 40 and accuracy > 80:
+            rating = "BUENO"
+        elif wpm > 25:
+            rating = "NORMAL"
+        else:
+            rating = "SIGUE PRACTICANDO"
+
+        result = (
+            f"\n◈ RESULTADOS TYPING TEST\n"
+            f"{'═' * 35}\n"
+            f"  Velocidad: {wpm:.0f} WPM\n"
+            f"  Precisión: {accuracy:.1f}%\n"
+            f"  Tiempo: {elapsed:.1f} segundos\n"
+            f"  Rating: {rating}\n"
+            f"{'═' * 35}"
+        )
+        self._print(result, "system")
+
     # ─── HISTORIAL ───────────────────────────────────
 
     def _hist(self, direction):
@@ -2495,6 +2586,11 @@ class JarvisGodMode:
         self.command_history.append(text)
         DataStore.save(HISTORY_FILE, list(self.command_history))
         self._print_user(text)
+
+        # Check if typing test is active
+        if getattr(self, '_typing_test_active', False):
+            self._check_typing_test(text)
+            return
 
         comando = text.lower().strip()
         C = self.theme
@@ -2897,6 +2993,144 @@ class JarvisGodMode:
             r = self.executor._open_program(prog)
             if r:
                 self._print_jarvis(r)
+            return
+
+        # ── Pomodoro mejorado para estudio ──
+        if comando.startswith("estudiar") or comando.startswith("study"):
+            mins = 45
+            parts = comando.split()
+            for p in parts:
+                if p.isdigit():
+                    mins = int(p)
+                    break
+            self.pomodoro.start(work=mins, brk=10)
+            self._print_jarvis(f"◈ Modo estudio activado: {mins} min de enfoque, 10 min descanso.\nUsa 'pomodoro stop' para parar.")
+            self.voice.speak(f"Modo estudio activado. {mins} minutos de enfoque.")
+            return
+
+        # ── Wikipedia rapida ──
+        if comando.startswith("wiki ") or comando.startswith("wikipedia "):
+            query = re.sub(r'^(wiki|wikipedia)\s+', '', text, flags=re.IGNORECASE).strip()
+            self._print("◈ Consultando Wikipedia...", "muted")
+            self.root.update()
+            def _wiki():
+                try:
+                    url = f"https://es.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(query)}"
+                    req = urllib.request.Request(url, headers={"User-Agent": "Jarvis/6.1"})
+                    with urllib.request.urlopen(req, timeout=10) as resp:
+                        data = json.loads(resp.read().decode("utf-8"))
+                    title = data.get("title", query)
+                    extract = data.get("extract", "No se encontró información.")
+                    desktop_url = data.get("content_urls", {}).get("desktop", {}).get("page", "")
+                    result = f"◈ WIKIPEDIA: {title}\n{'═' * 40}\n{extract[:800]}"
+                    if desktop_url:
+                        result += f"\n\n→ {desktop_url}"
+                    self.root.after(0, lambda: self._print_jarvis(result))
+                except Exception as e:
+                    self.root.after(0, lambda: self._print_jarvis(f"No se pudo consultar Wikipedia: {e}"))
+            threading.Thread(target=_wiki, daemon=True).start()
+            return
+
+        # ── Reloj mundial ──
+        if comando.startswith("hora en ") or comando.startswith("time in "):
+            city = re.sub(r'^(hora en|time in)\s+', '', comando).strip()
+            tz_map = {
+                "new york": -5, "nueva york": -5, "los angeles": -8, "london": 0,
+                "londres": 0, "paris": 1, "tokyo": 9, "tokio": 9, "sydney": 11,
+                "berlin": 1, "moscow": 3, "moscu": 3, "madrid": 1, "roma": 1,
+                "beijing": 8, "pekin": 8, "dubai": 4, "mexico": -6, "cdmx": -6,
+                "bogota": -5, "buenos aires": -3, "santiago": -3, "lima": -5,
+                "sao paulo": -3, "miami": -5, "chicago": -6, "denver": -7,
+                "hawaii": -10, "alaska": -9, "seoul": 9, "seul": 9,
+            }
+            offset = tz_map.get(city.lower())
+            if offset is not None:
+                import datetime as _dt
+                utc = _dt.datetime.utcnow()
+                local_time = utc + _dt.timedelta(hours=offset)
+                self._print_jarvis(f"◈ Hora en {city.title()}: {local_time.strftime('%H:%M:%S')} (UTC{offset:+d})")
+            else:
+                self._print_jarvis(f"No tengo la zona horaria de '{city}'. Pregúntame con IA para más precisión.")
+            return
+
+        # ── Contador de palabras ──
+        if comando.startswith("contar ") or comando.startswith("wc "):
+            txt = re.sub(r'^(contar|wc)\s+', '', text, flags=re.IGNORECASE).strip()
+            words = len(txt.split())
+            chars = len(txt)
+            chars_no_space = len(txt.replace(" ", ""))
+            lines = txt.count("\n") + 1
+            self._print_jarvis(f"◈ Palabras: {words} | Caracteres: {chars} | Sin espacios: {chars_no_space} | Líneas: {lines}")
+            return
+
+        # ── IP publica ──
+        if comando in ("ip", "mi ip", "ip publica", "myip"):
+            self._print("◈ Consultando IP...", "muted")
+            def _get_ip():
+                try:
+                    req = urllib.request.Request("https://api.ipify.org?format=json",
+                                                 headers={"User-Agent": "Jarvis/6.1"})
+                    with urllib.request.urlopen(req, timeout=5) as resp:
+                        data = json.loads(resp.read().decode("utf-8"))
+                    self.root.after(0, lambda: self._print_jarvis(f"◈ Tu IP pública: {data['ip']}"))
+                except Exception:
+                    self.root.after(0, lambda: self._print_jarvis("No se pudo obtener la IP pública."))
+            threading.Thread(target=_get_ip, daemon=True).start()
+            return
+
+        # ── Velocidad de escritura (typing test) ──
+        if comando in ("typing", "typing test", "mecanografia", "velocidad"):
+            self._start_typing_test()
+            return
+
+        # ── Atajos rápidos para la U ──
+        if comando in ("google docs", "docs"):
+            webbrowser.open_new_tab("https://docs.google.com")
+            self._print_jarvis("Abriendo Google Docs.")
+            return
+        if comando in ("google sheets", "sheets", "hojas de calculo"):
+            webbrowser.open_new_tab("https://sheets.google.com")
+            self._print_jarvis("Abriendo Google Sheets.")
+            return
+        if comando in ("google slides", "slides", "presentaciones"):
+            webbrowser.open_new_tab("https://slides.google.com")
+            self._print_jarvis("Abriendo Google Slides.")
+            return
+        if comando in ("drive", "google drive"):
+            webbrowser.open_new_tab("https://drive.google.com")
+            self._print_jarvis("Abriendo Google Drive.")
+            return
+        if comando in ("classroom", "google classroom"):
+            webbrowser.open_new_tab("https://classroom.google.com")
+            self._print_jarvis("Abriendo Google Classroom.")
+            return
+        if comando in ("gmail", "correo", "email"):
+            webbrowser.open_new_tab("https://mail.google.com")
+            self._print_jarvis("Abriendo Gmail.")
+            return
+        if comando in ("calendar", "calendario"):
+            webbrowser.open_new_tab("https://calendar.google.com")
+            self._print_jarvis("Abriendo Google Calendar.")
+            return
+        if comando in ("github"):
+            webbrowser.open_new_tab("https://github.com")
+            self._print_jarvis("Abriendo GitHub.")
+            return
+        if comando in ("chatgpt"):
+            webbrowser.open_new_tab("https://chat.openai.com")
+            self._print_jarvis("Abriendo ChatGPT.")
+            return
+        if comando in ("canva"):
+            webbrowser.open_new_tab("https://www.canva.com")
+            self._print_jarvis("Abriendo Canva.")
+            return
+        if comando in ("notion"):
+            webbrowser.open_new_tab("https://www.notion.so")
+            self._print_jarvis("Abriendo Notion.")
+            return
+        if comando in ("trello"):
+            webbrowser.open_new_tab("https://trello.com")
+            self._print_jarvis("Abriendo Trello.")
             return
 
         # ── Enviar al cerebro IA ──
@@ -3521,14 +3755,14 @@ class JarvisGodMode:
  ║    tarea done 1       — mark task complete       ║
  ║    uptime             — session time             ║
  ║    pomodoro [min]     — productivity timer       ║
- ║    pomodoro stop      — stop timer               ║
+ ║    estudiar [min]     — study mode (45/10)       ║
  ║    schedule ver       — scheduled tasks          ║
  ║    clipboard          — clipboard history        ║
  ║    exportar           — save chat to file        ║
  ║    proveedores        — view AI providers        ║
  ║    limpiar / cls      — clear screen             ║
  ╠══════════════════════════════════════════════════╣
- ║  NEW v6.0 COMMANDS:                              ║
+ ║  TOOLS & UTILITIES:                              ║
  ║    cronometro         — start/stop/reset         ║
  ║    timer N            — countdown N minutes      ║
  ║    calc EXPR          — calculator (sin,cos,pi)  ║
@@ -3536,15 +3770,28 @@ class JarvisGodMode:
  ║    dias hasta DD/MM   — date calculator          ║
  ║    briefing           — daily briefing report    ║
  ║    procesos           — top system processes     ║
- ║    password N         — generate N-char password ║
+ ║    password N         — generate strong password ║
  ║    base64 TEXT        — encode/decode base64     ║
  ║    hash TEXT          — MD5/SHA1/SHA256           ║
- ║    mayusculas TEXT    — text tools (upper/lower) ║
+ ║    mayusculas TEXT    — text tools                ║
  ║    chiste / frase     — jokes & quotes           ║
- ║    dado [N]           — roll dice (N sides)      ║
- ║    moneda             — flip a coin              ║
- ║    buscar FILENAME    — search files on disk     ║
- ║    abrir PROGRAMA     — open any program         ║
+ ║    dado [N] / moneda  — dice & coin              ║
+ ║    typing             — speed typing test        ║
+ ║    contar TEXT        — word counter              ║
+ ║    ip                 — show public IP            ║
+ ╠══════════════════════════════════════════════════╣
+ ║  UNIVERSITY & QUICK ACCESS:                      ║
+ ║    wiki TOPIC         — Wikipedia summary        ║
+ ║    hora en CITY       — world clock              ║
+ ║    docs / sheets      — Google Docs/Sheets       ║
+ ║    slides / drive     — Slides/Drive             ║
+ ║    classroom          — Google Classroom          ║
+ ║    gmail / calendar   — Gmail/Calendar           ║
+ ║    github / canva     — GitHub/Canva             ║
+ ║    notion / trello    — Notion/Trello            ║
+ ║    chatgpt            — Open ChatGPT             ║
+ ║    buscar FILE        — search files on disk     ║
+ ║    abrir PROGRAM      — open any program         ║
  ╠══════════════════════════════════════════════════╣
  ║  CONFIGURATION:                                  ║
  ║    config proveedor: gemini/groq/ollama/openai   ║
