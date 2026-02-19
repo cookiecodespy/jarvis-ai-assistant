@@ -929,6 +929,25 @@ class ActionExecutor:
         query = re.sub(r'videos?\s+de\s+', '', query, flags=re.IGNORECASE).strip()
         if not query:
             return None
+        # Try to get the first video result and open it directly
+        try:
+            search_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(query)}"
+            req = urllib.request.Request(search_url, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept-Language": "es-CL,es;q=0.9,en;q=0.8"
+            })
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                html = resp.read().decode("utf-8", errors="ignore")
+            # Find video IDs in the page
+            video_ids = re.findall(r'"videoId":"([a-zA-Z0-9_-]{11})"', html)
+            if video_ids:
+                # Open the first unique video directly
+                video_url = f"https://www.youtube.com/watch?v={video_ids[0]}"
+                self._open_in_browser(video_url)
+                return None
+        except Exception:
+            pass
+        # Fallback: open search results page
         url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(query)}"
         self._open_in_browser(url)
         return None
@@ -3006,10 +3025,12 @@ class JarvisGodMode:
         if comando.startswith("youtube ") or comando.startswith("yt "):
             query = re.sub(r'^(youtube|yt)\s+', '', text, flags=re.IGNORECASE).strip()
             if query:
-                url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(query)}"
-                self.executor._open_in_browser(url)
-                self._print_jarvis(f"Buscando en YouTube: {query}")
-                self.voice.speak(f"Buscando en YouTube, señor.")
+                self._print_jarvis(f"Abriendo video de YouTube: {query}")
+                self.voice.speak(f"Abriendo video, señor.")
+                self.root.update()
+                def _yt_open():
+                    self.executor._search_youtube(query)
+                threading.Thread(target=_yt_open, daemon=True).start()
             else:
                 self._print_jarvis("Uso: youtube <lo que quieras buscar>")
             return
