@@ -4018,6 +4018,80 @@ $steps = [math]::Round({level} / 2)
 
         threading.Thread(target=process, daemon=True).start()
 
+    # ─── CAMERA CAPTURE ─────────────────────────────
+
+    def _camera_capture(self, prompt):
+        """Capture image from camera and send to Gemini Vision for analysis."""
+        if not HAS_CV2:
+            self._print("◈ ❌ Cámara no disponible. Instala: pip install opencv-python", "error")
+            return
+
+        self._print("◈ 📸 Abriendo cámara... (ESPACIO = capturar, ESC = cancelar)", "system")
+        self.root.update()
+
+        def capture_thread():
+            try:
+                cap = cv2.VideoCapture(0)
+                if not cap.isOpened():
+                    self.root.after(0, lambda: self._print("◈ ❌ No se pudo abrir la cámara.", "error"))
+                    return
+
+                captured_frame = None
+                while True:
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+
+                    # Add JARVIS overlay
+                    display = frame.copy()
+                    h, w = display.shape[:2]
+                    cv2.rectangle(display, (0, 0), (w, 40), (0, 0, 0), -1)
+                    cv2.putText(display, "J.A.R.V.I.S. VISION", (10, 28),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+                    cv2.putText(display, "SPACE: Capture | ESC: Cancel", (w - 350, 28),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 200), 1)
+
+                    # Draw scanning lines
+                    scan_y = int(time.time() * 100) % h
+                    cv2.line(display, (0, scan_y), (w, scan_y), (0, 255, 255), 1)
+
+                    cv2.imshow("JARVIS Vision", display)
+                    key = cv2.waitKey(1) & 0xFF
+
+                    if key == 27:  # ESC
+                        break
+                    elif key == 32:  # SPACE
+                        captured_frame = frame
+                        break
+
+                cap.release()
+                cv2.destroyAllWindows()
+
+                if captured_frame is None:
+                    self.root.after(0, lambda: self._print("◈ Captura cancelada.", "muted"))
+                    return
+
+                # Encode to base64
+                _, buffer = cv2.imencode('.jpg', captured_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                import base64
+                img_b64 = base64.b64encode(buffer).decode('utf-8')
+
+                self.root.after(0, lambda: self._print("◈ 🔍 Analizando imagen con IA...", "system"))
+
+                # Send to Gemini Vision
+                response = self.brain.think_with_image(prompt, img_b64)
+
+                def show_result():
+                    self._print_jarvis(response)
+                    self.voice.speak(response)
+
+                self.root.after(0, show_result)
+
+            except Exception as e:
+                self.root.after(0, lambda: self._print(f"◈ ❌ Error cámara: {e}", "error"))
+
+        threading.Thread(target=capture_thread, daemon=True).start()
+
     # ─── RATE LIMIT HANDLER ─────────────────────────
 
     def _handle_rate_limit(self, error_msg, original_text):
@@ -4692,12 +4766,17 @@ $steps = [math]::Round({level} / 2)
  ║  ◆ J.A.R.V.I.S. COMMAND REFERENCE v{VERSION}        ║
  ╠══════════════════════════════════════════════════╣
  ║  AI CHAT (natural language):                     ║
- ║    "abre chrome"  "busca X"  "climpenrouter...   ║
- ║    config api: YOUR_KEY                          ║
- ║    config api_openrouter: KEY                    ║
- ║    config modelo: model_name                     ║
- ║    modelos            — see all modelsd de 20"   ║
+ ║    "abre chrome"  "busca X"  "clima de NY"       ║
  ║    "recuerdame X en 5 minutos"                   ║
+ ╠══════════════════════════════════════════════════╣
+ ║  CAMERA / VISION (Gemini Vision):                ║
+ ║    camara             — describe what it sees    ║
+ ║    camara [prompt]    — analyze with custom ask  ║
+ ║    leer / ocr         — read text from image     ║
+ ║    resolver           — solve math from photo    ║
+ ║    codigo             — analyze code from photo  ║
+ ║    traducir cam       — translate visible text   ║
+ ║    que es esto        — identify objects         ║
  ╠══════════════════════════════════════════════════╣
  ║  LOCAL COMMANDS (no API cost):                   ║
  ║    notas / tareas     — view saved items         ║
@@ -4709,6 +4788,7 @@ $steps = [math]::Round({level} / 2)
  ║    clipboard          — clipboard history        ║
  ║    exportar           — save chat to file        ║
  ║    proveedores        — view AI providers        ║
+ ║    modelos            — see all AI models        ║
  ║    limpiar / cls      — clear screen             ║
  ╠══════════════════════════════════════════════════╣
  ║  TOOLS & UTILITIES:                              ║
@@ -4783,8 +4863,10 @@ $steps = [math]::Round({level} / 2)
  ║    abrir PROGRAM      — open any program         ║
  ╠══════════════════════════════════════════════════╣
  ║  CONFIGURATION:                                  ║
- ║    config proveedor: gemini/groq/ollama/openai   ║
+ ║    config proveedor: gemini/groq/openrouter/...  ║
  ║    config api: YOUR_KEY                          ║
+ ║    config api_openrouter: KEY                    ║
+ ║    config api_cerebras: KEY                      ║
  ║    config modelo: model_name                     ║
  ║    config nombre: your_name                      ║
  ║    config voz: jorge/dalia/elena/alvaro          ║
