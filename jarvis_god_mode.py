@@ -220,7 +220,7 @@ PROVIDERS = {
 # ══════════════════════════════════════════════════════════════
 
 APP_NAME = "J.A.R.V.I.S. GOD MODE"
-VERSION = "5.0.0"
+VERSION = "6.0.0"
 START_TIME = time.time()
 DATA_DIR = os.path.join(os.path.expanduser("~"), ".jarvis_god")
 NOTES_FILE = os.path.join(DATA_DIR, "notas.json")
@@ -270,7 +270,7 @@ CAPACIDADES (tienes acceso a estas herramientas - ÚSALAS cuando sea apropiado):
 
 1. EJECUTAR COMANDOS EN TERMINAL: [TERMINAL]: comando
 2. ABRIR PROGRAMAS: [ABRIR]: nombre_programa
-   (chrome, firefox, edge, notepad, calc, explorer, cmd, powershell, code, paint, word, excel, teams, discord, spotify, steam, taskmgr, settings)
+   (chrome, firefox, edge, notepad, calc, explorer, cmd, powershell, code, paint, word, excel, teams, discord, spotify, steam, taskmgr, settings, whatsapp, telegram)
 3. ABRIR WEB: [WEB]: url_completa
 4. BUSCAR EN GOOGLE: [GOOGLE]: búsqueda
 5. BUSCAR EN YOUTUBE: [YOUTUBE]: búsqueda
@@ -289,6 +289,17 @@ CAPACIDADES (tienes acceso a estas herramientas - ÚSALAS cuando sea apropiado):
 18. NOTICIAS: [NOTICIAS]: categoría
 19. BUSCAR ARCHIVOS: [BUSCAR_ARCHIVO]: nombre_o_patron|carpeta
 20. MATAR PROCESO: [KILL]: nombre_proceso
+
+IMPORTANTE - NOMBRES DE PROGRAMA:
+Cuando uses [ABRIR], escribe el nombre SIN puntuación al final.
+Correcto: [ABRIR]: edge
+Incorrecto: [ABRIR]: edge.
+
+NOTA: El usuario tiene acceso local a estos comandos sin IA:
+cronometro, timer, calc, convertir, dias hasta, briefing, procesos,
+password, base64, hash, mayusculas, minusculas, chiste, frase,
+dado, moneda, buscar archivos.
+Si el usuario pide algo que se puede resolver localmente, puedes decirle que use el comando local.
 
 REGLAS:
 - Puedes usar MÚLTIPLES comandos en una respuesta.
@@ -826,30 +837,47 @@ class ActionExecutor:
 
     def _open_program(self, name):
         programs = {
-            "chrome": "start chrome", "firefox": "start firefox",
-            "edge": "start msedge", "brave": "start brave",
+            "chrome": "start chrome", "google chrome": "start chrome",
+            "firefox": "start firefox", "mozilla": "start firefox",
+            "edge": "start msedge", "msedge": "start msedge",
+            "microsoft edge": "start msedge", "brave": "start brave",
             "notepad": "start notepad", "bloc": "start notepad",
+            "bloc de notas": "start notepad",
             "calc": "start calc", "calculadora": "start calc",
             "explorer": "start explorer", "explorador": "start explorer",
+            "archivos": "start explorer",
             "cmd": "start cmd", "terminal": "start wt",
             "powershell": "start powershell", "paint": "start mspaint",
             "word": "start winword", "excel": "start excel",
             "powerpoint": "start powerpnt", "outlook": "start outlook",
             "teams": "start msteams:", "code": "start code",
-            "vscode": "start code", "spotify": "start spotify:",
-            "discord": "start discord:", "steam": "start steam:",
-            "taskmgr": "start taskmgr", "settings": "start ms-settings:",
-            "configuracion": "start ms-settings:", "control": "start control",
-            "snipping": "start snippingtool", "photos": "start ms-photos:",
+            "vscode": "start code", "visual studio code": "start code",
+            "spotify": "start spotify:", "discord": "start discord:",
+            "steam": "start steam:", "whatsapp": "start whatsapp:",
+            "telegram": "start telegram:",
+            "taskmgr": "start taskmgr", "administrador de tareas": "start taskmgr",
+            "settings": "start ms-settings:",
+            "configuracion": "start ms-settings:", "ajustes": "start ms-settings:",
+            "control": "start control", "panel de control": "start control",
+            "snipping": "start snippingtool", "recortes": "start snippingtool",
+            "photos": "start ms-photos:", "fotos": "start ms-photos:",
             "maps": "start bingmaps:", "clock": "start ms-clock:",
-            "store": "start ms-windows-store:", "mail": "start outlookmail:",
+            "reloj": "start ms-clock:",
+            "store": "start ms-windows-store:", "tienda": "start ms-windows-store:",
+            "mail": "start outlookmail:", "correo": "start outlookmail:",
         }
-        key = name.lower().strip()
+        # Clean the name: strip punctuation, extra spaces
+        key = re.sub(r'[^\w\s]', '', name.lower()).strip()
         cmd = programs.get(key)
         if cmd:
-            os.system(cmd)
+            subprocess.Popen(cmd, shell=True, creationflags=0x08000000)
             return f"Abriendo {name}."
-        os.system(f"start {key}")
+        # Try partial match
+        for prog_key, prog_cmd in programs.items():
+            if prog_key in key or key in prog_key:
+                subprocess.Popen(prog_cmd, shell=True, creationflags=0x08000000)
+                return f"Abriendo {prog_key}."
+        subprocess.Popen(f"start {key}", shell=True, creationflags=0x08000000)
         return f"Intentando abrir {name}."
 
     # ─── Web ─────────────────────────────────────────
@@ -1491,8 +1519,10 @@ class JarvisGodMode:
         # HUD center - title
         hud_center = tk.Frame(self.hud_bar, bg=C["bg"])
         hud_center.grid(row=0, column=1, sticky="")
-        tk.Label(hud_center, text="◆ J.A.R.V.I.S. ", font=("Consolas", 11, "bold"),
-                 bg=C["bg"], fg=glow).pack(side="left")
+        self._hud_title_label = tk.Label(hud_center, text="◆ J.A.R.V.I.S. ",
+                                          font=("Consolas", 11, "bold"),
+                                          bg=C["bg"], fg=glow)
+        self._hud_title_label.pack(side="left")
         tk.Label(hud_center, text="GOD MODE ", font=("Consolas", 11, "bold"),
                  bg=C["bg"], fg=C["red"]).pack(side="left")
         tk.Label(hud_center, text=f"v{VERSION} ◆", font=("Consolas", 11, "bold"),
@@ -1709,6 +1739,9 @@ class JarvisGodMode:
             ("▸ CPU/RAM", lambda: self._quick_cmd("cpu y ram")),
             ("▸ CLIMA", lambda: self._quick_cmd("clima de mi ciudad")),
             ("▸ NOTICIAS", lambda: self._quick_cmd("noticias de hoy")),
+            ("▸ BRIEFING", lambda: self._quick_cmd("briefing")),
+            ("▸ PROCESOS", lambda: self._quick_cmd("procesos")),
+            ("▸ CALC", lambda: self._quick_cmd("calc 2+2")),
             ("▸ NOTAS", lambda: self._quick_cmd("mis notas")),
             ("▸ TAREAS", lambda: self._quick_cmd("mis tareas")),
             ("▸ PASSWORD", lambda: self._quick_cmd("contraseña de 20")),
@@ -1755,6 +1788,7 @@ class JarvisGodMode:
         # Start visual effects
         self.root.after(1000, self._start_matrix_rain)
         self.root.after(1500, self._start_network_pulse)
+        self.root.after(3000, self._start_glitch_effect)
 
         # Clock & Monitor loop
         self._tick()
@@ -1886,6 +1920,105 @@ class JarvisGodMode:
                             fill=c, font=("Consolas", 6))
 
             self.root.after(80, self._animate_matrix)
+        except Exception:
+            pass
+
+    # ─── SCANLINE SWEEP EFFECT ──────────────────────
+
+    def _start_scanline(self):
+        """Add a horizontal scanline sweep over the terminal output."""
+        self._scan_y = 0
+        self._scanline_canvas = tk.Canvas(self.output_frame, width=3, height=600,
+                                           bg=self.theme["bg"], highlightthickness=0)
+        self._scanline_canvas.place(relx=0, rely=0, relwidth=1, relheight=1)
+        self._scanline_canvas.configure(bg="")
+        self._scanline_canvas.lower()  # Behind text
+        # Use an overlay approach — transparent-like scanline
+        self._scan_overlay = tk.Canvas(self.output_frame, highlightthickness=0)
+        self._scan_overlay.place(relx=0, y=0, relwidth=1, height=2)
+        self._scan_overlay.configure(bg=self.theme.get("glow", self.theme["accent"]))
+        self._scan_overlay.attributes = {}
+        self._animate_scanline()
+
+    def _animate_scanline(self):
+        """Move scanline down the terminal."""
+        try:
+            h = self.output_frame.winfo_height()
+            if h < 10:
+                h = 600
+            self._scan_y += 2
+            if self._scan_y > h:
+                self._scan_y = 0
+            self._scan_overlay.place(relx=0, y=self._scan_y, relwidth=1, height=2)
+            # Fade effect — change opacity via color
+            progress = self._scan_y / h
+            alpha = int(40 + 20 * math.sin(progress * math.pi))
+            glow = self.theme.get("glow", self.theme["accent"])
+            # Dim the scanline color
+            r = int(glow[1:3], 16) if len(glow) >= 7 else 0
+            g = int(glow[3:5], 16) if len(glow) >= 7 else 255
+            b = int(glow[5:7], 16) if len(glow) >= 7 else 0
+            dim_r = max(0, min(255, int(r * alpha / 80)))
+            dim_g = max(0, min(255, int(g * alpha / 80)))
+            dim_b = max(0, min(255, int(b * alpha / 80)))
+            dim_color = f"#{dim_r:02x}{dim_g:02x}{dim_b:02x}"
+            self._scan_overlay.configure(bg=dim_color)
+            self.root.after(50, self._animate_scanline)
+        except Exception:
+            pass
+
+    # ─── GLITCH EFFECT ON TITLE ──────────────────────
+
+    def _start_glitch_effect(self):
+        """Periodically glitch the title text."""
+        self._glitch_cycle()
+
+    def _glitch_cycle(self):
+        """Randomly glitch the HUD title."""
+        try:
+            if not hasattr(self, '_hud_title_label'):
+                # Find the title labels in hud_center (set during _build_ui)
+                self.root.after(random.randint(8000, 20000), self._glitch_cycle)
+                return
+            original = "◆ J.A.R.V.I.S. "
+            glitch_chars = "░▒▓█▀▄▐▌╬╠╣╚╗┤├"
+            glitched = ""
+            for ch in original:
+                if random.random() < 0.3:
+                    glitched += random.choice(glitch_chars)
+                else:
+                    glitched += ch
+            self._hud_title_label.config(text=glitched)
+            # Restore after brief moment
+            self.root.after(120, lambda: self._hud_title_label.config(text=original))
+            # Second micro-glitch
+            self.root.after(200, lambda: self._hud_title_label.config(
+                text="".join(random.choice(glitch_chars) if random.random() < 0.2 else c for c in original)))
+            self.root.after(320, lambda: self._hud_title_label.config(text=original))
+            # Next glitch in 8-20 seconds
+            self.root.after(random.randint(8000, 20000), self._glitch_cycle)
+        except Exception:
+            pass
+
+    # ─── HEX GRID PATTERN ────────────────────────────
+
+    def _draw_hex_grid(self, canvas, width, height, color):
+        """Draw a subtle hexagonal grid pattern (EDEX-UI inspired)."""
+        try:
+            size = 20
+            for row in range(0, height + size, int(size * 1.5)):
+                offset = size if (row // int(size * 1.5)) % 2 else 0
+                for col in range(-size, width + size, int(size * 1.73)):
+                    cx = col + offset
+                    cy = row
+                    points = []
+                    for i in range(6):
+                        angle = math.radians(60 * i + 30)
+                        px = cx + size * 0.4 * math.cos(angle)
+                        py = cy + size * 0.4 * math.sin(angle)
+                        points.extend([px, py])
+                    if len(points) >= 6:
+                        canvas.create_polygon(points, outline=color, fill="", width=1)
         except Exception:
             pass
 
@@ -2107,6 +2240,229 @@ class JarvisGodMode:
         self.output.config(state="normal")
         self.output.delete("1.0", "end")
         self.output.config(state="disabled")
+
+    # ─── UTILIDADES NUEVAS v6.0 ──────────────────────
+
+    def _stopwatch_status(self):
+        if getattr(self, '_sw_running', False):
+            elapsed = time.time() - self._sw_start
+        else:
+            elapsed = getattr(self, '_sw_elapsed', 0)
+        return f"◈ Cronómetro: {self._format_elapsed(elapsed)}"
+
+    def _format_elapsed(self, seconds):
+        h = int(seconds // 3600)
+        m = int((seconds % 3600) // 60)
+        s = int(seconds % 60)
+        ms = int((seconds % 1) * 100)
+        if h > 0:
+            return f"{h:02d}:{m:02d}:{s:02d}.{ms:02d}"
+        return f"{m:02d}:{s:02d}.{ms:02d}"
+
+    def _check_timer(self):
+        """Check if timer has expired."""
+        if not getattr(self, '_timer_running', False):
+            return
+        remaining = self._timer_end - time.time()
+        if remaining <= 0:
+            self._timer_running = False
+            self._print("\n◈ TIMER COMPLETADO!", "info")
+            self.voice.speak("Señor, el temporizador ha terminado.")
+            SoundFX.beep_alert()
+            return
+        self.root.after(1000, self._check_timer)
+
+    def _safe_calc(self, expression):
+        """Safe math calculator."""
+        try:
+            expr = expression.strip().replace("^", "**").replace(",", ".")
+            expr = expr.replace("×", "*").replace("÷", "/")
+            safe = {
+                "abs": abs, "round": round, "min": min, "max": max,
+                "sin": math.sin, "cos": math.cos, "tan": math.tan,
+                "asin": math.asin, "acos": math.acos, "atan": math.atan,
+                "sqrt": math.sqrt, "log": math.log, "log10": math.log10,
+                "log2": math.log2, "exp": math.exp, "pow": pow,
+                "pi": math.pi, "e": math.e, "tau": math.tau,
+                "factorial": math.factorial, "ceil": math.ceil,
+                "floor": math.floor, "gcd": math.gcd,
+                "radians": math.radians, "degrees": math.degrees,
+            }
+            forbidden = ["import", "exec", "eval", "open", "os.", "sys.", "__", "lambda"]
+            for w in forbidden:
+                if w in expr.lower():
+                    return "◈ Expresión no permitida."
+            result = eval(expr, {"__builtins__": {}}, safe)
+            if isinstance(result, float):
+                if result == int(result) and not math.isinf(result):
+                    result = int(result)
+                else:
+                    result = round(result, 10)
+            return f"◈ {expression} = {result}"
+        except ZeroDivisionError:
+            return "◈ Error: División por cero."
+        except Exception as e:
+            return f"◈ Error: {e}"
+
+    def _convert_units(self, text):
+        """Unit converter."""
+        text_lower = text.lower().strip()
+        conversions = [
+            (r"([\d.]+)\s*(?:km|kilómetros?|kilometros?)\s+(?:a|en|to)\s+(?:mi|millas?)",
+             lambda v: (v * 0.621371, "millas")),
+            (r"([\d.]+)\s*(?:mi|millas?)\s+(?:a|en|to)\s+(?:km|kilómetros?|kilometros?)",
+             lambda v: (v * 1.60934, "km")),
+            (r"([\d.]+)\s*(?:kg|kilos?|kilogramos?)\s+(?:a|en|to)\s+(?:lb|libras?)",
+             lambda v: (v * 2.20462, "libras")),
+            (r"([\d.]+)\s*(?:lb|libras?)\s+(?:a|en|to)\s+(?:kg|kilos?|kilogramos?)",
+             lambda v: (v * 0.453592, "kg")),
+            (r"([\d.]+)\s*(?:m|metros?)\s+(?:a|en|to)\s+(?:ft|pies?|feet)",
+             lambda v: (v * 3.28084, "pies")),
+            (r"([\d.]+)\s*(?:ft|pies?|feet)\s+(?:a|en|to)\s+(?:m|metros?)",
+             lambda v: (v * 0.3048, "metros")),
+            (r"([\d.]+)\s*(?:l|litros?)\s+(?:a|en|to)\s+(?:gal|galones?)",
+             lambda v: (v * 0.264172, "galones")),
+            (r"([\d.]+)\s*(?:gal|galones?)\s+(?:a|en|to)\s+(?:l|litros?)",
+             lambda v: (v * 3.78541, "litros")),
+            (r"([\d.]+)\s*(?:cm|centímetros?|centimetros?)\s+(?:a|en|to)\s+(?:in|pulgadas?)",
+             lambda v: (v * 0.393701, "pulgadas")),
+            (r"([\d.]+)\s*(?:in|pulgadas?)\s+(?:a|en|to)\s+(?:cm|centímetros?|centimetros?)",
+             lambda v: (v * 2.54, "cm")),
+            (r"([\d.]+)\s*°?(?:c|celsius|centígrados?|centigrados?)\s+(?:a|en|to)\s+°?(?:f|fahrenheit)",
+             lambda v: (v * 9/5 + 32, "°F")),
+            (r"([\d.]+)\s*°?(?:f|fahrenheit)\s+(?:a|en|to)\s+°?(?:c|celsius|centígrados?|centigrados?)",
+             lambda v: ((v - 32) * 5/9, "°C")),
+        ]
+        for pattern, converter in conversions:
+            match = re.search(pattern, text_lower)
+            if match:
+                value = float(match.group(1))
+                result, unit = converter(value)
+                return f"◈ {value} → {result:.4f} {unit}"
+        return (
+            "◈ Formato: '[valor] [unidad] a [unidad]'\n"
+            "  Ejemplos: 10 km a millas | 75 kg a libras | 100 celsius a fahrenheit"
+        )
+
+    def _date_calc(self, text):
+        """Date calculator."""
+        text_lower = text.lower().strip()
+        today = datetime.date.today()
+        match = re.search(r"(?:dias|días)\s+(?:para|hasta)\s+(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?", text_lower)
+        if match:
+            day, month = int(match.group(1)), int(match.group(2))
+            year = int(match.group(3)) if match.group(3) else today.year
+            if year < 100:
+                year += 2000
+            try:
+                target = datetime.date(year, month, day)
+                diff = (target - today).days
+                if diff > 0:
+                    return f"◈ Faltan {diff} días para el {target.strftime('%d/%m/%Y')}"
+                elif diff < 0:
+                    return f"◈ Han pasado {abs(diff)} días desde el {target.strftime('%d/%m/%Y')}"
+                else:
+                    return "◈ Esa fecha es hoy!"
+            except ValueError:
+                return "◈ Fecha inválida."
+        match = re.search(r"(?:hoy|fecha)\s*([\+\-])\s*(\d+)\s*(?:dias|días)?", text_lower)
+        if match:
+            op, days = match.group(1), int(match.group(2))
+            if op == "+":
+                result = today + datetime.timedelta(days=days)
+            else:
+                result = today - datetime.timedelta(days=days)
+            return f"◈ Resultado: {result.strftime('%d/%m/%Y')}"
+        return "◈ Uso: 'dias para 25/12' o 'hoy +30 dias'"
+
+    def _show_briefing(self):
+        """Daily briefing like jarvis_pro_ultra."""
+        now = datetime.datetime.now()
+        dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+        meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
+                 "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+        dia_nombre = dias[now.weekday()]
+        mes_nombre = meses[now.month - 1]
+        day_of_year = now.timetuple().tm_yday
+        is_leap = (now.year % 4 == 0 and (now.year % 100 != 0 or now.year % 400 == 0))
+        total_days = 366 if is_leap else 365
+        days_left = total_days - day_of_year
+        progress = day_of_year / total_days * 100
+        filled = int(20 * progress / 100)
+        year_bar = "█" * filled + "░" * (20 - filled)
+
+        todos = DataStore.load(TODOS_FILE, [])
+        pending = [t for t in todos if not t.get("done")]
+
+        frases = [
+            "El éxito es la suma de pequeños esfuerzos repetidos día tras día.",
+            "La disciplina es el puente entre las metas y los logros.",
+            "Todo parece imposible hasta que se hace. — Nelson Mandela",
+            "La creatividad es la inteligencia divirtiéndose. — Einstein",
+            "El único modo de hacer un gran trabajo es amar lo que haces.",
+        ]
+
+        lines = [
+            " ╔══════════════════════════════════════════╗",
+            f" ║  ◆ BRIEFING DIARIO — {dia_nombre:<20}║",
+            " ╠══════════════════════════════════════════╣",
+            f" ║  {dia_nombre}, {now.day} de {mes_nombre} de {now.year}",
+            f" ║  {now.strftime('%H:%M:%S')}",
+            f" ║  Día {day_of_year} del año | Quedan {days_left} días",
+            f" ║  [{year_bar}] {progress:.1f}%",
+            " ║",
+        ]
+        if pending:
+            lines.append(f" ║  Tareas pendientes: {len(pending)}")
+            for i, t in enumerate(pending[:5], 1):
+                lines.append(f" ║    {i}. {t['text']}")
+        else:
+            lines.append(" ║  Sin tareas pendientes. ¡Buen trabajo!")
+
+        if HAS_PSUTIL:
+            cpu = psutil.cpu_percent(interval=0.5)
+            ram = psutil.virtual_memory()
+            lines.append(" ║")
+            lines.append(f" ║  CPU: {cpu:.0f}% | RAM: {ram.percent:.0f}%")
+
+        lines.extend([
+            " ║",
+            f" ║  \"{random.choice(frases)}\"",
+            " ╚══════════════════════════════════════════╝",
+        ])
+        self._print("\n".join(lines), "system")
+
+    def _show_processes(self):
+        """Show top system processes."""
+        if not HAS_PSUTIL:
+            self._print_jarvis("Instala psutil para ver procesos: pip install psutil")
+            return
+        try:
+            procs = []
+            for p in psutil.process_iter(['name', 'cpu_percent', 'memory_percent']):
+                try:
+                    info = p.info
+                    if info['cpu_percent'] is not None and info['memory_percent'] is not None:
+                        procs.append(info)
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            # Sort by CPU then RAM
+            procs.sort(key=lambda x: (x.get('cpu_percent', 0) or 0), reverse=True)
+            lines = [" ╔══════════════════════════════════════════╗",
+                     " ║  ◆ TOP PROCESSES                         ║",
+                     " ╠══════════════════════════════════════════╣",
+                     " ║  NAME                    CPU%    RAM%    ║",
+                     " ║──────────────────────────────────────────║"]
+            for p in procs[:12]:
+                name = (p.get('name', '??') or '??')[:22]
+                cpu = p.get('cpu_percent', 0) or 0
+                mem = p.get('memory_percent', 0) or 0
+                if cpu > 0 or mem > 0.1:
+                    lines.append(f" ║  {name:<22} {cpu:>5.1f}   {mem:>5.1f}   ║")
+            lines.append(" ╚══════════════════════════════════════════╝")
+            self._print("\n".join(lines), "system")
+        except Exception as e:
+            self._print_jarvis(f"Error obteniendo procesos: {e}")
 
     # ─── HISTORIAL ───────────────────────────────────
 
@@ -2342,6 +2698,207 @@ class JarvisGodMode:
             self._print_jarvis(f"Llevo activo {h}h {m}m {s}s, señor.")
             return
 
+        # ── Cronómetro ──
+        if comando in ("cronometro", "cronómetro", "stopwatch"):
+            self._print(self._stopwatch_status(), "system")
+            return
+        if comando in ("iniciar cronometro", "iniciar cronómetro", "start stopwatch"):
+            if not hasattr(self, '_sw_start') or not self._sw_running:
+                self._sw_running = True
+                self._sw_start = time.time() - getattr(self, '_sw_elapsed', 0)
+                self._print_jarvis("Cronómetro iniciado.")
+            else:
+                self._print_jarvis("El cronómetro ya está corriendo.")
+            return
+        if comando in ("parar cronometro", "parar cronómetro", "stop stopwatch"):
+            if getattr(self, '_sw_running', False):
+                self._sw_running = False
+                self._sw_elapsed = time.time() - self._sw_start
+                self._print_jarvis(f"Cronómetro detenido: {self._format_elapsed(self._sw_elapsed)}")
+            else:
+                self._print_jarvis("El cronómetro no está corriendo.")
+            return
+        if comando in ("reiniciar cronometro", "reiniciar cronómetro", "reset stopwatch"):
+            self._sw_running = False
+            self._sw_elapsed = 0
+            self._print_jarvis("Cronómetro reiniciado a 00:00.")
+            return
+
+        # ── Temporizador ──
+        m_timer = re.match(r"^(?:temporizador|timer)\s+(\d+)", comando)
+        if m_timer:
+            mins = int(m_timer.group(1))
+            self._timer_end = time.time() + mins * 60
+            self._timer_running = True
+            self._print_jarvis(f"Temporizador de {mins} minutos iniciado.")
+            self._check_timer()
+            return
+        if comando in ("temporizador", "timer"):
+            if getattr(self, '_timer_running', False) and hasattr(self, '_timer_end'):
+                rem = self._timer_end - time.time()
+                if rem > 0:
+                    m_v, s_v = divmod(int(rem), 60)
+                    self._print_jarvis(f"Temporizador: {m_v:02d}:{s_v:02d} restantes.")
+                else:
+                    self._timer_running = False
+                    self._print_jarvis("El temporizador ha terminado.")
+            else:
+                self._print_jarvis("No hay temporizador activo. Uso: timer 10")
+            return
+
+        # ── Calculadora (auto-detect math) ──
+        if comando.startswith("calc:") or comando.startswith("calcular:"):
+            expr = text.split(":", 1)[1].strip()
+            self._print(self._safe_calc(expr), "system")
+            return
+        if re.match(r'^[\d\s\+\-\*/\(\)\.\^%]+$', comando) and len(comando) > 1:
+            self._print(self._safe_calc(text), "system")
+            return
+
+        # ── Conversor de unidades ──
+        if comando.startswith("convertir:") or comando.startswith("convert:"):
+            expr = text.split(":", 1)[1].strip()
+            self._print(self._convert_units(expr), "system")
+            return
+        if re.search(r'\d+.*(?:km|millas?|kg|libras?|metros?|pies|litros?|galones?|celsius|fahrenheit|cm|pulgadas?)\s+(?:a|en|to)\s+', comando):
+            self._print(self._convert_units(text), "system")
+            return
+
+        # ── Calculadora de fechas ──
+        if comando.startswith("dias para") or comando.startswith("días para"):
+            self._print(self._date_calc(text), "system")
+            return
+        if re.match(r'^hoy\s*[\+\-]', comando):
+            self._print(self._date_calc(text), "system")
+            return
+
+        # ── Contraseña local (sin IA) ──
+        if comando.startswith("password") or comando.startswith("contraseña") or comando.startswith("clave"):
+            m_pwd = re.search(r'(\d+)', comando)
+            length = int(m_pwd.group(1)) if m_pwd else 16
+            length = max(8, min(128, length))
+            self._print(self.executor._gen_password(str(length)), "system")
+            return
+
+        # ── Base64 / Hash ──
+        if comando.startswith("base64 encode:") or comando.startswith("b64e:"):
+            t = text.split(":", 1)[1].strip()
+            import base64 as _b64
+            self._print(f"◈ Base64: {_b64.b64encode(t.encode()).decode()}", "system")
+            return
+        if comando.startswith("base64 decode:") or comando.startswith("b64d:"):
+            t = text.split(":", 1)[1].strip()
+            import base64 as _b64
+            try:
+                self._print(f"◈ Decoded: {_b64.b64decode(t.encode()).decode()}", "system")
+            except Exception:
+                self._print("◈ Texto Base64 inválido.", "error")
+            return
+        if comando.startswith("hash:"):
+            import hashlib as _hl
+            t = text.split(":", 1)[1].strip()
+            self._print(
+                f"◈ HASHES de '{t}':\n"
+                f"  MD5:    {_hl.md5(t.encode()).hexdigest()}\n"
+                f"  SHA1:   {_hl.sha1(t.encode()).hexdigest()}\n"
+                f"  SHA256: {_hl.sha256(t.encode()).hexdigest()}",
+                "system"
+            )
+            return
+
+        # ── Herramientas de texto ──
+        if comando.startswith("mayusculas:") or comando.startswith("upper:"):
+            self._print(f"◈ {text.split(':', 1)[1].strip().upper()}", "system")
+            return
+        if comando.startswith("minusculas:") or comando.startswith("lower:"):
+            self._print(f"◈ {text.split(':', 1)[1].strip().lower()}", "system")
+            return
+        if comando.startswith("invertir:") or comando.startswith("reverse:"):
+            self._print(f"◈ {text.split(':', 1)[1].strip()[::-1]}", "system")
+            return
+        if comando.startswith("contar:") or comando.startswith("stats:"):
+            t = text.split(":", 1)[1].strip()
+            self._print(
+                f"◈ TEXT STATS:\n"
+                f"  Caracteres: {len(t)} | Sin espacios: {len(t.replace(' ', ''))}\n"
+                f"  Palabras: {len(t.split())} | Líneas: {t.count(chr(10)) + 1}",
+                "system"
+            )
+            return
+
+        # ── Chistes / Frases motivacionales ──
+        if comando in ("chiste", "joke", "humor"):
+            chistes = [
+                "¿Por qué los programadores prefieren el frío? Porque no quieren bugs... ¡quieren bytes!",
+                "Hay 10 tipos de personas: las que entienden binario y las que no.",
+                "Un SQL entra en un bar, se acerca a dos tablas y pregunta: ¿puedo unirme?",
+                "¿Por qué Java y JavaScript se parecen? Como car y carpet.",
+                "Un programador pone 2 vasos en la mesita: uno con agua por si tiene sed, y otro vacío por si no tiene.",
+                "Mi código funciona y no sé por qué. Mi código no funciona y no sé por qué.",
+                "// Este código funciona, no lo toques.",
+                "¿Cuántos programadores se necesitan para cambiar un foco? Ninguno, es un problema de hardware.",
+            ]
+            self._print_jarvis(random.choice(chistes))
+            return
+        if comando in ("frase", "motivacion", "motivación", "quote"):
+            frases = [
+                "El éxito es la suma de pequeños esfuerzos repetidos día tras día. — Robert Collier",
+                "No te detengas cuando estés cansado. Detente cuando hayas terminado.",
+                "La disciplina es el puente entre las metas y los logros. — Jim Rohn",
+                "El único modo de hacer un gran trabajo es amar lo que haces. — Steve Jobs",
+                "Todo parece imposible hasta que se hace. — Nelson Mandela",
+                "La creatividad es la inteligencia divirtiéndose. — Albert Einstein",
+                "El futuro pertenece a quienes creen en la belleza de sus sueños. — Eleanor Roosevelt",
+                "La mejor forma de predecir el futuro es creándolo. — Abraham Lincoln",
+            ]
+            self._print_jarvis(f"◆ \"{random.choice(frases)}\"")
+            return
+
+        # ── Briefing diario ──
+        if comando in ("briefing", "buenos dias", "buenos días", "resumen", "inicio"):
+            self._show_briefing()
+            return
+
+        # ── Dado / Moneda ──
+        if comando in ("dado", "dice", "tirar dado", "d6"):
+            result = random.randint(1, 6)
+            self._print_jarvis(f"Resultado del dado: {result}")
+            return
+        if comando.startswith("d") and comando[1:].isdigit():
+            sides = int(comando[1:])
+            if 2 <= sides <= 1000:
+                result = random.randint(1, sides)
+                self._print_jarvis(f"D{sides}: {result}")
+            return
+        if comando in ("moneda", "coin", "cara o cruz", "flip"):
+            result = random.choice(["CARA", "CRUZ"])
+            self._print_jarvis(f"Moneda: {result}")
+            return
+
+        # ── Procesos del sistema ──
+        if comando in ("procesos", "processes", "top"):
+            self._show_processes()
+            return
+
+        # ── Buscar archivos local ──
+        if comando.startswith("buscar:") or comando.startswith("find:"):
+            query = text.split(":", 1)[1].strip()
+            self._print("◈ Buscando archivos...", "muted")
+            self.root.update()
+            def _search():
+                r = self.executor._search_files(query)
+                self.root.after(0, lambda: self._print(r, "system"))
+            threading.Thread(target=_search, daemon=True).start()
+            return
+
+        # ── Abrir programas directamente (fallback sin IA) ──
+        if comando.startswith("abrir "):
+            prog = text[6:].strip()
+            r = self.executor._open_program(prog)
+            if r:
+                self._print_jarvis(r)
+            return
+
         # ── Enviar al cerebro IA ──
 
         if not self.brain.ready:
@@ -2432,13 +2989,54 @@ class JarvisGodMode:
             return
 
         if "chrome" in comando:
-            os.system("start chrome")
+            self.executor._open_program("chrome")
             self._print_jarvis("Abriendo Chrome.")
             return
 
         if "notepad" in comando or "bloc" in comando:
-            os.system("start notepad")
+            self.executor._open_program("notepad")
             self._print_jarvis("Abriendo bloc de notas.")
+            return
+
+        if "edge" in comando:
+            self.executor._open_program("edge")
+            self._print_jarvis("Abriendo Microsoft Edge.")
+            return
+
+        # v6.0 offline commands
+        if any(w in comando for w in ["calc ", "calcula ", "calculadora"]):
+            expr = comando.replace("calc ", "").replace("calcula ", "").replace("calculadora ", "").strip()
+            if expr:
+                result = self._safe_calc(expr)
+                self._print_jarvis(result)
+            else:
+                self._print_jarvis("Uso: calc EXPRESION (ej: calc 2+2)")
+            return
+
+        if "briefing" in comando:
+            self._show_briefing()
+            return
+
+        if "procesos" in comando:
+            self._show_processes()
+            return
+
+        if any(w in comando for w in ["chiste", "joke"]):
+            chistes = [
+                "¿Por qué los programadores prefieren el frío? Porque hay menos bugs.",
+                "¿Cuántos programadores se necesitan para cambiar una bombilla? Ninguno, es un problema de hardware.",
+                "Un QA entra a un bar. Pide 1 cerveza. Pide 999999 cervezas. Pide -1 cervezas. Pide 0 cervezas.",
+            ]
+            self._print_jarvis(f"◈ {random.choice(chistes)}")
+            return
+
+        if any(w in comando for w in ["frase", "quote", "motivacion"]):
+            frases = [
+                "El único modo de hacer un gran trabajo es amar lo que haces. — Steve Jobs",
+                "La mejor forma de predecir el futuro es inventarlo. — Alan Kay",
+                "El código es poesía. — Folklore dev",
+            ]
+            self._print_jarvis(f"◈ {random.choice(frases)}")
             return
 
         provider = self.config.get("provider", "gemini")
@@ -2454,7 +3052,9 @@ class JarvisGodMode:
             "     config api: TU_KEY → https://console.groq.com/keys\n\n"
             "  3. Ollama (local):\n"
             "     config proveedor: ollama → https://ollama.com\n\n"
-            "Sin IA: hora, fecha, sistema, cpu, disco, clima"
+            "Sin IA disponible: hora, fecha, sistema, cpu, disco,\n"
+            "  clima, calc, briefing, procesos, chiste, frase,\n"
+            "  cronometro, timer, password, dado, moneda, help"
         )
 
     # ─── VOZ ─────────────────────────────────────────
@@ -2812,6 +3412,8 @@ class JarvisGodMode:
             "[SYS] Scanning hardware subsystems...",
             "[SEC] Activating security protocols...",
             "[AI] Running self-diagnostics...",
+            "[VFX] Enabling visual effects engine...",
+            "[HEX] Loading interface grid overlay...",
         ]
 
         # EDEX-UI style banner
@@ -2829,12 +3431,20 @@ class JarvisGodMode:
  ╚══════════════════════════════════════════════════════╝
 """, "hud")
 
-        # Animated boot sequence
+        # Animated boot sequence with progress bar
+        total = len(boot_lines)
+
         def show_boot_line(idx):
-            if idx < len(boot_lines):
+            if idx < total:
                 self._print(f"  ▸ {boot_lines[idx]}", "muted")
+                # Progress bar
+                filled = int((idx + 1) / total * 30)
+                bar = "█" * filled + "░" * (30 - filled)
+                pct = int((idx + 1) / total * 100)
+                self._print(f"  [{bar}] {pct}%", "action")
                 self.root.after(150, lambda: show_boot_line(idx + 1))
             else:
+                self._print("  [██████████████████████████████] 100%\n", "info")
                 self.root.after(200, self._show_greeting)
 
         show_boot_line(0)
@@ -2917,6 +3527,24 @@ class JarvisGodMode:
  ║    exportar           — save chat to file        ║
  ║    proveedores        — view AI providers        ║
  ║    limpiar / cls      — clear screen             ║
+ ╠══════════════════════════════════════════════════╣
+ ║  NEW v6.0 COMMANDS:                              ║
+ ║    cronometro         — start/stop/reset         ║
+ ║    timer N            — countdown N minutes      ║
+ ║    calc EXPR          — calculator (sin,cos,pi)  ║
+ ║    convertir X a Y    — unit converter           ║
+ ║    dias hasta DD/MM   — date calculator          ║
+ ║    briefing           — daily briefing report    ║
+ ║    procesos           — top system processes     ║
+ ║    password N         — generate N-char password ║
+ ║    base64 TEXT        — encode/decode base64     ║
+ ║    hash TEXT          — MD5/SHA1/SHA256           ║
+ ║    mayusculas TEXT    — text tools (upper/lower) ║
+ ║    chiste / frase     — jokes & quotes           ║
+ ║    dado [N]           — roll dice (N sides)      ║
+ ║    moneda             — flip a coin              ║
+ ║    buscar FILENAME    — search files on disk     ║
+ ║    abrir PROGRAMA     — open any program         ║
  ╠══════════════════════════════════════════════════╣
  ║  CONFIGURATION:                                  ║
  ║    config proveedor: gemini/groq/ollama/openai   ║
