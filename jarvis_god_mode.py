@@ -220,7 +220,7 @@ PROVIDERS = {
 # ══════════════════════════════════════════════════════════════
 
 APP_NAME = "J.A.R.V.I.S. GOD MODE"
-VERSION = "6.2.0"
+VERSION = "6.3.0"
 START_TIME = time.time()
 DATA_DIR = os.path.join(os.path.expanduser("~"), ".jarvis_god")
 NOTES_FILE = os.path.join(DATA_DIR, "notas.json")
@@ -231,6 +231,8 @@ CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 CONVERSATION_FILE = os.path.join(DATA_DIR, "conversacion.json")
 CLIPBOARD_FILE = os.path.join(DATA_DIR, "clipboard_history.json")
 SCHEDULER_FILE = os.path.join(DATA_DIR, "scheduler.json")
+HABITS_FILE = os.path.join(DATA_DIR, "habits.json")
+FLASHCARDS_FILE = os.path.join(DATA_DIR, "flashcards.json")
 AUDIO_CACHE_DIR = os.path.join(DATA_DIR, "audio_cache")
 
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -3241,7 +3243,584 @@ class JarvisGodMode:
             self._print_jarvis("Abriendo Trello.")
             return
 
-        # ── Enviar al cerebro IA ──
+        # ══════════════════════════════════════════════
+        # IRON MAN / SYSTEM POWER COMMANDS
+        # ══════════════════════════════════════════════
+
+        # ── Battery status ──
+        if comando in ("bateria", "battery", "bat"):
+            if HAS_PSUTIL:
+                bat = psutil.sensors_battery()
+                if bat:
+                    pct = bat.percent
+                    plugged = "🔌 Conectado a corriente" if bat.power_plugged else "🔋 Usando batería"
+                    bar = self.executor._bar(pct, 20)
+                    time_left = ""
+                    if not bat.power_plugged and bat.secsleft > 0:
+                        hrs = bat.secsleft // 3600
+                        mins = (bat.secsleft % 3600) // 60
+                        time_left = f"\n  ⏱️ Tiempo restante: {hrs}h {mins}m"
+                    status = "CRITICAL" if pct < 15 else "LOW" if pct < 30 else "OK" if pct < 80 else "FULL"
+                    self._print(f"◈ BATERÍA: {pct}% {bar} [{status}]\n  {plugged}{time_left}", "system")
+                    if pct < 15:
+                        self.voice.speak("Advertencia: batería crítica, conecte el cargador.")
+                else:
+                    self._print_jarvis("No se detectó batería (probablemente un desktop).")
+            else:
+                self._print_jarvis("Necesitas psutil: pip install psutil")
+            return
+
+        # ── Volume control (Windows) ──
+        if comando.startswith("volumen ") or comando.startswith("volume "):
+            vol_arg = comando.split()[-1]
+            if vol_arg in ("mute", "silencio", "mudo"):
+                subprocess.run('powershell -c "(New-Object -ComObject WScript.Shell).SendKeys([char]173)"',
+                               shell=True, creationflags=0x08000000)
+                self._print_jarvis("🔇 Volumen silenciado.")
+            elif vol_arg.isdigit():
+                level = max(0, min(100, int(vol_arg)))
+                ps_cmd = f'''powershell -c "
+$vol = (New-Object -ComObject WScript.Shell)
+# Set volume to {level}%
+1..50 | ForEach-Object {{ $vol.SendKeys([char]174) }}
+$steps = [math]::Round({level} / 2)
+1..$steps | ForEach-Object {{ $vol.SendKeys([char]175) }}
+"'''
+                subprocess.Popen(ps_cmd, shell=True, creationflags=0x08000000)
+                self._print_jarvis(f"🔊 Volumen ajustado a ~{level}%")
+            else:
+                self._print_jarvis("Uso: volumen 50 | volumen mute")
+            return
+
+        # ── Brightness control (Windows) ──
+        if comando.startswith("brillo ") or comando.startswith("brightness "):
+            try:
+                level = int(comando.split()[-1])
+                level = max(0, min(100, level))
+                subprocess.run(
+                    f'powershell -c "(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods).WmiSetBrightness(1,{level})"',
+                    shell=True, creationflags=0x08000000, timeout=5
+                )
+                bar = self.executor._bar(level, 20)
+                self._print_jarvis(f"💡 Brillo: {level}% {bar}")
+            except Exception as e:
+                self._print_jarvis(f"No pude cambiar el brillo: {e}")
+            return
+
+        # ── Disk cleanup ──
+        if comando in ("limpiar disco", "cleanup", "limpiar temp", "clean"):
+            self._print("◈ Limpiando archivos temporales...", "muted")
+            self.root.update()
+            def _cleanup():
+                cleaned = 0
+                total_size = 0
+                temp_dirs = [tempfile.gettempdir(), os.path.join(os.environ.get("LOCALAPPDATA", ""), "Temp")]
+                for tmp_dir in temp_dirs:
+                    if os.path.exists(tmp_dir):
+                        for f in os.listdir(tmp_dir):
+                            fp = os.path.join(tmp_dir, f)
+                            try:
+                                if os.path.isfile(fp):
+                                    total_size += os.path.getsize(fp)
+                                    os.remove(fp)
+                                    cleaned += 1
+                            except Exception:
+                                pass
+                size_mb = total_size / (1024 * 1024)
+                self.root.after(0, lambda: self._print_jarvis(
+                    f"◈ LIMPIEZA COMPLETADA\n  🗑️ {cleaned} archivos eliminados\n  💾 {size_mb:.1f} MB liberados"
+                ))
+            threading.Thread(target=_cleanup, daemon=True).start()
+            return
+
+        # ── Network / WiFi info ──
+        if comando in ("red", "network", "wifi", "net"):
+            hostname = socket.gethostname()
+            local_ip = socket.gethostbyname(hostname)
+            info = f"◈ RED / NETWORK\n{'═' * 35}\n  🖥️ Host: {hostname}\n  📍 IP Local: {local_ip}"
+            try:
+                result = subprocess.run('netsh wlan show interfaces', capture_output=True, text=True,
+                                        shell=True, creationflags=0x08000000, timeout=5)
+                for line in result.stdout.split("\n"):
+                    if "SSID" in line and "BSSID" not in line:
+                        info += f"\n  📶 {line.strip()}"
+                    elif "Signal" in line or "Señal" in line:
+                        info += f"\n  📊 {line.strip()}"
+                    elif "Radio type" in line or "Tipo de radio" in line:
+                        info += f"\n  📻 {line.strip()}"
+            except Exception:
+                pass
+            self._print(info, "system")
+            return
+
+        # ── WiFi passwords (Iron Man scan) ──
+        if comando in ("wifi pass", "wifi password", "wifi clave", "wifi claves"):
+            self._print("◈ Escaneando perfiles WiFi guardados...", "muted")
+            self.root.update()
+            try:
+                result = subprocess.run('netsh wlan show profiles', capture_output=True, text=True,
+                                        shell=True, creationflags=0x08000000, timeout=10)
+                profiles = re.findall(r":\s*(.+)", result.stdout)
+                wifi_list = []
+                for prof in profiles[:15]:
+                    prof = prof.strip()
+                    if not prof:
+                        continue
+                    try:
+                        detail = subprocess.run(f'netsh wlan show profile "{prof}" key=clear',
+                                                capture_output=True, text=True, shell=True,
+                                                creationflags=0x08000000, timeout=5)
+                        key_match = re.search(r"Key Content\s*:\s*(.+)|Contenido de la clave\s*:\s*(.+)", detail.stdout)
+                        pwd = (key_match.group(1) or key_match.group(2)).strip() if key_match else "—"
+                        wifi_list.append(f"  📶 {prof}: {pwd}")
+                    except Exception:
+                        wifi_list.append(f"  📶 {prof}: (error)")
+                if wifi_list:
+                    self._print("◈ WIFI PASSWORDS\n" + "═" * 35 + "\n" + "\n".join(wifi_list), "system")
+                else:
+                    self._print_jarvis("No se encontraron perfiles WiFi.")
+            except Exception as e:
+                self._print_jarvis(f"Error: {e}")
+            return
+
+        # ── Speed test ──
+        if comando in ("speedtest", "velocidad", "speed", "speed test"):
+            self._print("◈ Midiendo velocidad de internet...", "muted")
+            self.root.update()
+            def _speed():
+                try:
+                    url = "https://speed.cloudflare.com/__down?bytes=10000000"
+                    start = time.time()
+                    req = urllib.request.Request(url, headers={"User-Agent": "Jarvis/6.2"})
+                    with urllib.request.urlopen(req, timeout=30) as resp:
+                        data = resp.read()
+                    elapsed = time.time() - start
+                    mbps = (len(data) * 8 / 1_000_000) / elapsed
+                    self.root.after(0, lambda: self._print_jarvis(
+                        f"◈ SPEED TEST\n{'═' * 35}\n  ⬇️ Download: {mbps:.1f} Mbps\n  📦 {len(data)/1_000_000:.1f} MB en {elapsed:.1f}s"
+                    ))
+                except Exception as e:
+                    self.root.after(0, lambda: self._print_jarvis(f"Error en speed test: {e}"))
+            threading.Thread(target=_speed, daemon=True).start()
+            return
+
+        # ══════════════════════════════════════════════
+        # FINANCE & DATA
+        # ══════════════════════════════════════════════
+
+        # ── Currency converter ──
+        if comando.startswith("cambio ") or comando.startswith("moneda ") and "a" in comando:
+            m = re.match(r'(?:cambio|moneda)\s+([\d.]+)\s*(\w{3})\s+a\s+(\w{3})', comando)
+            if m:
+                amount, src, tgt = float(m.group(1)), m.group(2).upper(), m.group(3).upper()
+                self._print("◈ Consultando tipo de cambio...", "muted")
+                self.root.update()
+                def _exchange():
+                    try:
+                        url = f"https://api.exchangerate-api.com/v4/latest/{src}"
+                        req = urllib.request.Request(url, headers={"User-Agent": "Jarvis/6.2"})
+                        with urllib.request.urlopen(req, timeout=10) as resp:
+                            data = json.loads(resp.read().decode("utf-8"))
+                        rate = data["rates"].get(tgt)
+                        if rate:
+                            result = amount * rate
+                            self.root.after(0, lambda: self._print_jarvis(
+                                f"◈ CAMBIO DE DIVISA\n  💰 {amount:,.2f} {src} = {result:,.2f} {tgt}\n  📊 1 {src} = {rate:.4f} {tgt}"
+                            ))
+                        else:
+                            self.root.after(0, lambda: self._print_jarvis(f"Moneda '{tgt}' no encontrada."))
+                    except Exception as e:
+                        self.root.after(0, lambda: self._print_jarvis(f"Error: {e}"))
+                threading.Thread(target=_exchange, daemon=True).start()
+            else:
+                self._print_jarvis("Uso: cambio 100 USD a CLP")
+            return
+
+        # ── Crypto prices ──
+        if comando in ("crypto", "bitcoin", "btc", "eth", "cripto", "criptomonedas"):
+            self._print("◈ Consultando criptomonedas...", "muted")
+            self.root.update()
+            def _crypto():
+                try:
+                    url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,ripple&vs_currencies=usd,clp&include_24hr_change=true"
+                    req = urllib.request.Request(url, headers={"User-Agent": "Jarvis/6.2"})
+                    with urllib.request.urlopen(req, timeout=10) as resp:
+                        data = json.loads(resp.read().decode("utf-8"))
+                    lines = ["◈ CRYPTO PRICES", "═" * 35]
+                    symbols = {"bitcoin": "₿ BTC", "ethereum": "Ξ ETH", "solana": "◎ SOL", "ripple": "✕ XRP"}
+                    for coin, sym in symbols.items():
+                        if coin in data:
+                            d = data[coin]
+                            usd = d.get("usd", 0)
+                            clp = d.get("clp", 0)
+                            change = d.get("usd_24h_change", 0)
+                            arrow = "📈" if change > 0 else "📉"
+                            lines.append(f"  {sym}: ${usd:,.2f} USD | ${clp:,.0f} CLP {arrow} {change:+.1f}%")
+                    self.root.after(0, lambda: self._print("\n".join(lines), "system"))
+                except Exception as e:
+                    self.root.after(0, lambda: self._print_jarvis(f"Error crypto: {e}"))
+            threading.Thread(target=_crypto, daemon=True).start()
+            return
+
+        # ── Download file ──
+        if comando.startswith("descargar ") or comando.startswith("download "):
+            url = re.sub(r'^(descargar|download)\s+', '', text, flags=re.IGNORECASE).strip()
+            if url:
+                self._print(f"◈ Descargando: {url}", "muted")
+                self.root.update()
+                def _download():
+                    try:
+                        filename = url.split("/")[-1].split("?")[0] or "download"
+                        dest = os.path.join(os.path.expanduser("~"), "Downloads", filename)
+                        req = urllib.request.Request(url, headers={"User-Agent": "Jarvis/6.2"})
+                        with urllib.request.urlopen(req, timeout=60) as resp:
+                            with open(dest, "wb") as f:
+                                f.write(resp.read())
+                        size = os.path.getsize(dest) / (1024 * 1024)
+                        self.root.after(0, lambda: self._print_jarvis(f"◈ Descargado: {filename} ({size:.1f} MB)\n  📁 {dest}"))
+                    except Exception as e:
+                        self.root.after(0, lambda: self._print_jarvis(f"Error descargando: {e}"))
+                threading.Thread(target=_download, daemon=True).start()
+            else:
+                self._print_jarvis("Uso: descargar https://url.com/archivo.zip")
+            return
+
+        # ══════════════════════════════════════════════
+        # PRODUCTIVITY
+        # ══════════════════════════════════════════════
+
+        # ── Habit tracker ──
+        if comando in ("habitos", "habits", "mis habitos"):
+            habits = DataStore.load(HABITS_FILE, {})
+            today = datetime.datetime.now().strftime("%Y-%m-%d")
+            if not habits.get("list"):
+                self._print_jarvis("No tienes hábitos. Agrega uno: habito add NOMBRE")
+            else:
+                lines = ["◈ HABIT TRACKER", "═" * 35]
+                today_done = habits.get("log", {}).get(today, [])
+                for h in habits["list"]:
+                    done = "✅" if h in today_done else "⬜"
+                    # Count streak
+                    streak = 0
+                    d = datetime.datetime.now()
+                    while True:
+                        ds = d.strftime("%Y-%m-%d")
+                        if h in habits.get("log", {}).get(ds, []):
+                            streak += 1
+                            d -= datetime.timedelta(days=1)
+                        else:
+                            break
+                    lines.append(f"  {done} {h} {'🔥' * min(streak, 5)} ({streak}d streak)")
+                self._print("\n".join(lines), "system")
+            return
+
+        if comando.startswith("habito add ") or comando.startswith("habit add "):
+            name = re.sub(r'(?:habito|habit)\s+add\s+', '', text, flags=re.IGNORECASE).strip()
+            habits = DataStore.load(HABITS_FILE, {"list": [], "log": {}})
+            if name not in habits["list"]:
+                habits["list"].append(name)
+                DataStore.save(HABITS_FILE, habits)
+                self._print_jarvis(f"✅ Hábito '{name}' agregado.")
+            else:
+                self._print_jarvis(f"Ya tienes el hábito '{name}'.")
+            return
+
+        if comando.startswith("habito done ") or comando.startswith("habit done "):
+            name = re.sub(r'(?:habito|habit)\s+done\s+', '', text, flags=re.IGNORECASE).strip()
+            habits = DataStore.load(HABITS_FILE, {"list": [], "log": {}})
+            today = datetime.datetime.now().strftime("%Y-%m-%d")
+            if today not in habits.get("log", {}):
+                habits["log"][today] = []
+            if name in habits.get("list", []) and name not in habits["log"][today]:
+                habits["log"][today].append(name)
+                DataStore.save(HABITS_FILE, habits)
+                self._print_jarvis(f"✅ Hábito '{name}' completado hoy.")
+            elif name not in habits.get("list", []):
+                self._print_jarvis(f"No tienes el hábito '{name}'. Agrégalo: habito add {name}")
+            else:
+                self._print_jarvis(f"Ya completaste '{name}' hoy.")
+            return
+
+        if comando.startswith("habito del ") or comando.startswith("habit del "):
+            name = re.sub(r'(?:habito|habit)\s+del\s+', '', text, flags=re.IGNORECASE).strip()
+            habits = DataStore.load(HABITS_FILE, {"list": [], "log": {}})
+            if name in habits.get("list", []):
+                habits["list"].remove(name)
+                DataStore.save(HABITS_FILE, habits)
+                self._print_jarvis(f"🗑️ Hábito '{name}' eliminado.")
+            return
+
+        # ── Flashcards ──
+        if comando in ("flashcards", "flash", "tarjetas"):
+            cards = DataStore.load(FLASHCARDS_FILE, [])
+            if not cards:
+                self._print_jarvis("No tienes flashcards. Crea una: flash add PREGUNTA | RESPUESTA")
+            else:
+                # Random quiz mode
+                card = random.choice(cards)
+                self._flash_card = card
+                self._flash_mode = True
+                self._print(f"◈ FLASHCARD ({len(cards)} tarjetas)\n{'═' * 35}\n  ❓ {card['q']}\n\n  (Escribe tu respuesta...)", "system")
+            return
+
+        if comando.startswith("flash add ") or comando.startswith("tarjeta add "):
+            content = re.sub(r'(?:flash|tarjeta)\s+add\s+', '', text, flags=re.IGNORECASE).strip()
+            if "|" in content:
+                q, a = content.split("|", 1)
+                cards = DataStore.load(FLASHCARDS_FILE, [])
+                cards.append({"q": q.strip(), "a": a.strip(), "score": 0})
+                DataStore.save(FLASHCARDS_FILE, cards)
+                self._print_jarvis(f"📝 Flashcard creada. Total: {len(cards)}")
+            else:
+                self._print_jarvis("Uso: flash add PREGUNTA | RESPUESTA")
+            return
+
+        if comando in ("flash list", "tarjetas ver", "flash ver"):
+            cards = DataStore.load(FLASHCARDS_FILE, [])
+            if cards:
+                lines = ["◈ FLASHCARDS", "═" * 35]
+                for i, c in enumerate(cards, 1):
+                    lines.append(f"  {i}. Q: {c['q']}")
+                    lines.append(f"     A: {c['a']}")
+                self._print("\n".join(lines), "system")
+            else:
+                self._print_jarvis("No tienes flashcards.")
+            return
+
+        if comando.startswith("flash del "):
+            try:
+                idx = int(comando.split()[-1]) - 1
+                cards = DataStore.load(FLASHCARDS_FILE, [])
+                if 0 <= idx < len(cards):
+                    removed = cards.pop(idx)
+                    DataStore.save(FLASHCARDS_FILE, cards)
+                    self._print_jarvis(f"🗑️ Flashcard eliminada: {removed['q']}")
+            except (ValueError, IndexError):
+                self._print_jarvis("Uso: flash del 1")
+            return
+
+        # Check flashcard answer
+        if getattr(self, '_flash_mode', False):
+            card = self._flash_card
+            self._flash_mode = False
+            user_ans = text.strip().lower()
+            correct_ans = card["a"].strip().lower()
+            # Fuzzy match: check if answer contains key words
+            if user_ans == correct_ans or correct_ans in user_ans or user_ans in correct_ans:
+                self._print_jarvis(f"✅ ¡Correcto!\n  Respuesta: {card['a']}")
+                # Update score
+                cards = DataStore.load(FLASHCARDS_FILE, [])
+                for c in cards:
+                    if c["q"] == card["q"]:
+                        c["score"] = c.get("score", 0) + 1
+                DataStore.save(FLASHCARDS_FILE, cards)
+            else:
+                self._print_jarvis(f"❌ Incorrecto.\n  Tu respuesta: {text}\n  ✅ Correcta: {card['a']}")
+            return
+
+        # ── Alarm ──
+        if comando.startswith("alarma ") or comando.startswith("alarm "):
+            m = re.match(r'(?:alarma|alarm)\s+(\d{1,2}):(\d{2})', comando)
+            if m:
+                h, mn = int(m.group(1)), int(m.group(2))
+                alarm_time = f"{h:02d}:{mn:02d}"
+                self._print_jarvis(f"⏰ Alarma configurada para las {alarm_time}")
+                def _alarm():
+                    while True:
+                        now = datetime.datetime.now().strftime("%H:%M")
+                        if now == alarm_time:
+                            for _ in range(5):
+                                SoundFX.beep_alert()
+                                time.sleep(0.5)
+                            self.root.after(0, lambda: self._print_jarvis(f"⏰ ¡¡¡ ALARMA {alarm_time} !!!"))
+                            self.root.after(0, lambda: self.voice.speak("Alarma! Es hora, señor."))
+                            break
+                        time.sleep(10)
+                threading.Thread(target=_alarm, daemon=True).start()
+            else:
+                self._print_jarvis("Uso: alarma 07:30")
+            return
+
+        # ══════════════════════════════════════════════
+        # DEV & DATA TOOLS
+        # ══════════════════════════════════════════════
+
+        # ── JSON formatter ──
+        if comando.startswith("json:") or comando.startswith("json "):
+            raw = text.split(":", 1)[1].strip() if ":" in text else text[5:].strip()
+            try:
+                parsed = json.loads(raw)
+                formatted = json.dumps(parsed, indent=2, ensure_ascii=False)
+                self._print(f"◈ JSON FORMATTED:\n{formatted}", "system")
+            except json.JSONDecodeError as e:
+                self._print(f"◈ JSON Error: {e}", "error")
+            return
+
+        # ── Lorem ipsum ──
+        if comando in ("lorem", "ipsum", "lorem ipsum"):
+            paragraphs = [
+                "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.",
+                "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
+                "Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo.",
+            ]
+            text_out = "\n\n".join(paragraphs)
+            try:
+                self.root.clipboard_clear()
+                self.root.clipboard_append(text_out)
+                self._print(f"◈ LOREM IPSUM (copiado al portapapeles):\n\n{text_out}", "system")
+            except Exception:
+                self._print(f"◈ LOREM IPSUM:\n\n{text_out}", "system")
+            return
+
+        # ── Color converter ──
+        if comando.startswith("color #") or comando.startswith("color rgb"):
+            color_arg = re.sub(r'^color\s+', '', text, flags=re.IGNORECASE).strip()
+            if color_arg.startswith("#"):
+                hex_c = color_arg.lstrip("#")
+                if len(hex_c) == 6:
+                    r, g, b = int(hex_c[:2], 16), int(hex_c[2:4], 16), int(hex_c[4:6], 16)
+                    self._print(f"◈ COLOR: #{hex_c}\n  RGB: ({r}, {g}, {b})\n  HSL: ~use for design", "system")
+                else:
+                    self._print_jarvis("Formato: color #FF5733")
+            elif "rgb" in color_arg.lower():
+                nums = re.findall(r'\d+', color_arg)
+                if len(nums) >= 3:
+                    r, g, b = int(nums[0]), int(nums[1]), int(nums[2])
+                    hex_c = f"#{r:02X}{g:02X}{b:02X}"
+                    self._print(f"◈ COLOR: RGB({r},{g},{b})\n  HEX: {hex_c}", "system")
+            return
+
+        # ── UUID generator ──
+        if comando in ("uuid", "guid"):
+            import uuid as _uuid
+            uid = str(_uuid.uuid4())
+            try:
+                self.root.clipboard_clear()
+                self.root.clipboard_append(uid)
+            except Exception:
+                pass
+            self._print(f"◈ UUID: {uid}\n  (copiado al portapapeles)", "system")
+            return
+
+        # ── Random generators ──
+        if comando.startswith("random "):
+            arg = comando.split("random ", 1)[1].strip()
+            if arg.startswith("number") or arg.startswith("numero"):
+                nums = re.findall(r'\d+', arg)
+                lo = int(nums[0]) if len(nums) > 0 else 1
+                hi = int(nums[1]) if len(nums) > 1 else 100
+                self._print_jarvis(f"🎲 Número random: {random.randint(lo, hi)} (entre {lo} y {hi})")
+            elif arg == "color":
+                r, g, b = random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)
+                hex_c = f"#{r:02X}{g:02X}{b:02X}"
+                self._print_jarvis(f"🎨 Color random: {hex_c} = RGB({r},{g},{b})")
+            elif arg == "password" or arg == "pass":
+                self._print(self.executor._gen_password("16"), "system")
+            else:
+                self._print_jarvis("Uso: random number 1 100 | random color | random password")
+            return
+
+        # ── Regex tester ──
+        if comando.startswith("regex:"):
+            parts = text.split(":", 1)[1].strip().split("|", 1)
+            if len(parts) == 2:
+                pattern, test_str = parts[0].strip(), parts[1].strip()
+                try:
+                    matches = re.findall(pattern, test_str)
+                    self._print(f"◈ REGEX: /{pattern}/\n  Text: {test_str}\n  Matches: {matches}\n  Count: {len(matches)}", "system")
+                except re.error as e:
+                    self._print(f"◈ Regex error: {e}", "error")
+            else:
+                self._print_jarvis("Uso: regex: PATRON | TEXTO")
+            return
+
+        # ── System uptime (OS level) ──
+        if comando in ("uptime os", "uptime sistema", "uptime pc"):
+            if HAS_PSUTIL:
+                boot = datetime.datetime.fromtimestamp(psutil.boot_time())
+                uptime = datetime.datetime.now() - boot
+                days = uptime.days
+                hours = uptime.seconds // 3600
+                mins = (uptime.seconds % 3600) // 60
+                self._print(f"◈ PC encendido desde: {boot.strftime('%d/%m/%Y %H:%M')}\n  ⏱️ Uptime: {days}d {hours}h {mins}m", "system")
+            else:
+                self._print_jarvis("Necesitas psutil.")
+            return
+
+        # ── Scan open ports (Iron Man network scan) ──
+        if comando.startswith("scan ") or comando == "scan":
+            target = "127.0.0.1"
+            parts = comando.split()
+            if len(parts) > 1:
+                target = parts[1]
+            self._print(f"◈ Escaneando puertos de {target}...", "muted")
+            self.root.update()
+            def _scan():
+                open_ports = []
+                common_ports = [21, 22, 23, 25, 53, 80, 110, 135, 139, 143, 443, 445, 993, 995, 1433, 3306, 3389, 5432, 5900, 8080, 8443]
+                for port in common_ports:
+                    try:
+                        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        s.settimeout(0.5)
+                        if s.connect_ex((target, port)) == 0:
+                            open_ports.append(port)
+                        s.close()
+                    except Exception:
+                        pass
+                if open_ports:
+                    lines = [f"◈ PORT SCAN: {target}", "═" * 35]
+                    port_names = {21:"FTP",22:"SSH",23:"Telnet",25:"SMTP",53:"DNS",80:"HTTP",110:"POP3",
+                                  135:"RPC",139:"NetBIOS",143:"IMAP",443:"HTTPS",445:"SMB",993:"IMAPS",
+                                  995:"POP3S",1433:"MSSQL",3306:"MySQL",3389:"RDP",5432:"PostgreSQL",
+                                  5900:"VNC",8080:"HTTP-Alt",8443:"HTTPS-Alt"}
+                    for p in open_ports:
+                        name = port_names.get(p, "Unknown")
+                        lines.append(f"  🟢 Puerto {p}: {name} [OPEN]")
+                    self.root.after(0, lambda: self._print("\n".join(lines), "system"))
+                else:
+                    self.root.after(0, lambda: self._print_jarvis(f"No se encontraron puertos abiertos en {target}"))
+            threading.Thread(target=_scan, daemon=True).start()
+            return
+
+        # ── Daily summary ──
+        if comando in ("mi dia", "my day", "resumen del dia", "daily"):
+            hour = datetime.datetime.now().hour
+            period = "Buenos días" if hour < 12 else "Buenas tardes" if hour < 19 else "Buenas noches"
+            name = self.config.get("user_name", "señor")
+            lines = [f"◈ {period.upper()}, {name.upper()}", "═" * 40]
+            lines.append(f"  📅 {datetime.datetime.now().strftime('%A %d de %B, %Y')}")
+            lines.append(f"  ⏰ {datetime.datetime.now().strftime('%H:%M')}")
+            # Tasks
+            todos = DataStore.load(TODOS_FILE, [])
+            pending = [t for t in todos if not t.get("done")]
+            if pending:
+                lines.append(f"\n  📋 TAREAS PENDIENTES ({len(pending)}):")
+                for t in pending[:5]:
+                    lines.append(f"    ⬜ {t['text']}")
+            # Habits
+            habits = DataStore.load(HABITS_FILE, {})
+            today = datetime.datetime.now().strftime("%Y-%m-%d")
+            today_done = habits.get("log", {}).get(today, [])
+            if habits.get("list"):
+                lines.append(f"\n  🎯 HÁBITOS ({len(today_done)}/{len(habits['list'])}):")
+                for h in habits["list"]:
+                    done = "✅" if h in today_done else "⬜"
+                    lines.append(f"    {done} {h}")
+            # Battery
+            if HAS_PSUTIL:
+                bat = psutil.sensors_battery()
+                if bat:
+                    lines.append(f"\n  🔋 Batería: {bat.percent}%{'  🔌' if bat.power_plugged else ''}")
+                lines.append(f"  💻 CPU: {psutil.cpu_percent()}% | RAM: {psutil.virtual_memory().percent}%")
+            # Notes count
+            notes = DataStore.load(NOTES_FILE, [])
+            if notes:
+                lines.append(f"  📝 {len(notes)} notas guardadas")
+            # Pomodoro sessions
+            if self.pomodoro.sessions > 0:
+                lines.append(f"  🍅 {self.pomodoro.sessions} sesiones pomodoro hoy")
+            self._print("\n".join(lines), "system")
+            return
 
         if not self.brain.ready:
             self._fallback_response(text)
@@ -3750,7 +4329,7 @@ class JarvisGodMode:
         # Boot sequence lines
         boot_lines = [
             "[CORE] Initializing quantum neural processing units...",
-            "[CORE] Loading AI inference engine v6.2...",
+            "[CORE] Loading AI inference engine v6.3...",
             "[VOICE] Calibrating Edge TTS speech synthesis...",
             "[NET] Establishing secure AI provider link...",
             "[SYS] Scanning hardware: CPU, RAM, GPU, Storage...",
@@ -3760,6 +4339,9 @@ class JarvisGodMode:
             "[HEX] Loading holographic grid overlay...",
             "[WEB] Connecting YouTube, Google, Wikipedia APIs...",
             "[WX] Initializing Open-Meteo weather service...",
+            "[FIN] Loading crypto, currency & finance modules...",
+            "[HAB] Initializing habit tracker & flashcard engine...",
+            "[NET] Port scanner & speed test ready...",
             "[RDY] All subsystems nominal. Awaiting commands...",
         ]
 
@@ -3898,6 +4480,40 @@ class JarvisGodMode:
  ║    yt QUERY           — open first YouTube video ║
  ║    youtube QUERY      — same as yt               ║
  ║    google QUERY       — Google search            ║
+ ╠══════════════════════════════════════════════════╣
+ ║  IRON MAN / SYSTEM POWER:                         ║
+ ║    bateria            — battery status & time    ║
+ ║    volumen N / mute   — volume control           ║
+ ║    brillo N           — screen brightness        ║
+ ║    cleanup            — clean temp files         ║
+ ║    speedtest          — internet speed test      ║
+ ║    red / wifi         — network info             ║
+ ║    wifi pass          — show WiFi passwords      ║
+ ║    scan [IP]          — port scanner             ║
+ ║    uptime os          — system uptime            ║
+ ╠══════════════════════════════════════════════════╣
+ ║  FINANCE & DATA:                                 ║
+ ║    cambio 100 USD a CLP — currency converter     ║
+ ║    crypto / bitcoin   — crypto prices live       ║
+ ║    descargar URL      — download file            ║
+ ╠══════════════════════════════════════════════════╣
+ ║  PRODUCTIVITY:                                   ║
+ ║    habitos            — view habits & streaks    ║
+ ║    habito add NAME    — add a new habit          ║
+ ║    habito done NAME   — mark habit done today    ║
+ ║    flashcards / flash — study flashcards         ║
+ ║    flash add Q | A    — create flashcard         ║
+ ║    flash list         — view all flashcards      ║
+ ║    alarma HH:MM       — set alarm with sound     ║
+ ║    mi dia / daily     — full day summary         ║
+ ╠══════════════════════════════════════════════════╣
+ ║  DEV TOOLS:                                      ║
+ ║    json: {...}        — format/validate JSON     ║
+ ║    lorem              — lorem ipsum generator    ║
+ ║    color #HEX / rgb   — color converter          ║
+ ║    uuid               — generate UUID            ║
+ ║    random number 1 100 — random generators       ║
+ ║    regex: PAT | TEXT  — regex tester             ║
  ╠══════════════════════════════════════════════════╣
  ║  UNIVERSITY & QUICK ACCESS:                      ║
  ║    wiki TOPIC         — Wikipedia summary        ║
