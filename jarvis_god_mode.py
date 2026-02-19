@@ -154,6 +154,26 @@ THEMES = {
         "text": "#F3E5F5", "text2": "#CE93D8", "muted": "#6A1B9A",
         "border": "#251540",
     },
+    "edex": {
+        "name": "EDEX-UI Cyan",
+        "bg": "#000000", "bg2": "#0A0A0A", "bg3": "#111111",
+        "accent": "#00FFFF", "accent2": "#00CCCC",
+        "green": "#00FF88", "red": "#FF0055", "yellow": "#FFAA00",
+        "purple": "#AA00FF", "orange": "#FF6600",
+        "text": "#CCFFFF", "text2": "#669999", "muted": "#334444",
+        "border": "#00FFFF",
+        "glow": "#00FFFF",
+    },
+    "edex_red": {
+        "name": "EDEX-UI Red",
+        "bg": "#000000", "bg2": "#0A0000", "bg3": "#110000",
+        "accent": "#FF1A1A", "accent2": "#CC0000",
+        "green": "#FF4400", "red": "#FF0000", "yellow": "#FF6600",
+        "purple": "#FF0066", "orange": "#FF3300",
+        "text": "#FFCCCC", "text2": "#994444", "muted": "#442222",
+        "border": "#FF1A1A",
+        "glow": "#FF1A1A",
+    },
 }
 
 # ══════════════════════════════════════════════════════════════
@@ -200,7 +220,7 @@ PROVIDERS = {
 # ══════════════════════════════════════════════════════════════
 
 APP_NAME = "J.A.R.V.I.S. GOD MODE"
-VERSION = "4.2.0"
+VERSION = "5.0.0"
 START_TIME = time.time()
 DATA_DIR = os.path.join(os.path.expanduser("~"), ".jarvis_god")
 NOTES_FILE = os.path.join(DATA_DIR, "notas.json")
@@ -1386,8 +1406,8 @@ class JarvisGodMode:
     def __init__(self, root):
         self.root = root
         self.root.title(APP_NAME)
-        self.root.geometry("1050x750")
-        self.root.minsize(900, 650)
+        self.root.geometry("1280x800")
+        self.root.minsize(1024, 700)
 
         # Config
         self.config = DataStore.load(CONFIG_FILE, {})
@@ -1432,6 +1452,7 @@ class JarvisGodMode:
         self.wake_word_mode = self.config.get("wake_word", False)
         self._typewriter_queue = deque()
         self._typewriter_running = False
+        self._start_ts = datetime.datetime.now().timestamp()
 
         # UI
         self._build_ui()
@@ -1446,147 +1467,279 @@ class JarvisGodMode:
         C = self.theme
         self.root.grid_columnconfigure(0, weight=0)
         self.root.grid_columnconfigure(1, weight=1)
-        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(2, weight=0)
+        self.root.grid_rowconfigure(1, weight=1)
 
-        # === SIDEBAR ===
-        self.sidebar = tk.Frame(self.root, bg=C["bg2"], width=210)
-        self.sidebar.grid(row=0, column=0, sticky="nsw")
+        glow = C.get("glow", C["accent"])
+
+        # ═══ TOP HUD BAR ═══
+        self.hud_bar = tk.Frame(self.root, bg=C["bg"], height=38)
+        self.hud_bar.grid(row=0, column=0, columnspan=3, sticky="ew")
+        self.hud_bar.grid_propagate(False)
+        self.hud_bar.grid_columnconfigure(1, weight=1)
+
+        # HUD left
+        hud_left = tk.Frame(self.hud_bar, bg=C["bg"])
+        hud_left.grid(row=0, column=0, sticky="w", padx=10)
+        self.hud_clock = tk.Label(hud_left, font=("Consolas", 14, "bold"),
+                                   bg=C["bg"], fg=glow)
+        self.hud_clock.pack(side="left")
+        self.hud_date = tk.Label(hud_left, font=("Consolas", 9),
+                                  bg=C["bg"], fg=C["text2"])
+        self.hud_date.pack(side="left", padx=(10, 0))
+
+        # HUD center - title
+        hud_center = tk.Frame(self.hud_bar, bg=C["bg"])
+        hud_center.grid(row=0, column=1, sticky="")
+        tk.Label(hud_center, text="◆ J.A.R.V.I.S. ", font=("Consolas", 11, "bold"),
+                 bg=C["bg"], fg=glow).pack(side="left")
+        tk.Label(hud_center, text="GOD MODE ", font=("Consolas", 11, "bold"),
+                 bg=C["bg"], fg=C["red"]).pack(side="left")
+        tk.Label(hud_center, text=f"v{VERSION} ◆", font=("Consolas", 11, "bold"),
+                 bg=C["bg"], fg=glow).pack(side="left")
+
+        # HUD right - system stats
+        hud_right = tk.Frame(self.hud_bar, bg=C["bg"])
+        hud_right.grid(row=0, column=2, sticky="e", padx=10)
+        self.hud_cpu = tk.Label(hud_right, font=("Consolas", 9),
+                                 bg=C["bg"], fg=C["green"], text="CPU: --")
+        self.hud_cpu.pack(side="left", padx=5)
+        self.hud_ram = tk.Label(hud_right, font=("Consolas", 9),
+                                 bg=C["bg"], fg=C["yellow"], text="RAM: --")
+        self.hud_ram.pack(side="left", padx=5)
+        self.hud_provider = tk.Label(hud_right, font=("Consolas", 9),
+                                      bg=C["bg"], fg=C["accent"])
+        self.hud_provider.pack(side="left", padx=5)
+
+        # HUD horizontal glow line
+        self.hud_line = tk.Canvas(self.root, height=2, bg=C["bg"], highlightthickness=0)
+        self.hud_line.grid(row=0, column=0, columnspan=3, sticky="sew")
+        self.hud_line.create_rectangle(0, 0, 2000, 2, fill=glow, outline="")
+
+        # ═══ LEFT PANEL - GAUGES + CONTROLS ═══
+        self.sidebar = tk.Frame(self.root, bg=C["bg2"], width=230)
+        self.sidebar.grid(row=1, column=0, sticky="nsw", padx=(4, 0), pady=4)
         self.sidebar.grid_propagate(False)
 
-        # Logo
-        tk.Label(self.sidebar, text="⚡", font=("Segoe UI", 38),
-                 bg=C["bg2"], fg=C["accent"]).pack(pady=(15, 0))
-        tk.Label(self.sidebar, text="J.A.R.V.I.S.", font=("Consolas", 14, "bold"),
-                 bg=C["bg2"], fg=C["accent"]).pack()
-        tk.Label(self.sidebar, text="GOD MODE", font=("Consolas", 7, "bold"),
-                 bg=C["bg2"], fg=C["red"]).pack()
+        # Sidebar border glow (left line)
+        self._draw_panel_border(self.sidebar, glow)
 
-        # Reloj
-        self.clock_lbl = tk.Label(self.sidebar, font=("Consolas", 22, "bold"),
-                                  bg=C["bg2"], fg=C["green"])
-        self.clock_lbl.pack(pady=(10, 0))
-        self.date_lbl = tk.Label(self.sidebar, font=("Consolas", 9),
-                                 bg=C["bg2"], fg=C["text2"])
-        self.date_lbl.pack()
+        # ── Arc Gauge: CPU ──
+        tk.Label(self.sidebar, text="◈ CPU", font=("Consolas", 9, "bold"),
+                 bg=C["bg2"], fg=glow).pack(pady=(10, 2))
+        self.cpu_canvas = tk.Canvas(self.sidebar, width=180, height=100,
+                                     bg=C["bg2"], highlightthickness=0)
+        self.cpu_canvas.pack()
+        self.cpu_val_lbl = tk.Label(self.sidebar, text="0%", font=("Consolas", 11, "bold"),
+                                     bg=C["bg2"], fg=glow)
+        self.cpu_val_lbl.pack()
 
-        # Monitor CPU/RAM
-        self.monitor_lbl = tk.Label(self.sidebar, font=("Consolas", 8),
-                                    bg=C["bg2"], fg=C["yellow"], text="")
-        self.monitor_lbl.pack(pady=(5, 0))
+        # ── Arc Gauge: RAM ──
+        tk.Label(self.sidebar, text="◈ RAM", font=("Consolas", 9, "bold"),
+                 bg=C["bg2"], fg=C["yellow"]).pack(pady=(8, 2))
+        self.ram_canvas = tk.Canvas(self.sidebar, width=180, height=100,
+                                     bg=C["bg2"], highlightthickness=0)
+        self.ram_canvas.pack()
+        self.ram_val_lbl = tk.Label(self.sidebar, text="0%", font=("Consolas", 11, "bold"),
+                                     bg=C["bg2"], fg=C["yellow"])
+        self.ram_val_lbl.pack()
 
-        # Pomodoro status
+        # ── Voice & Pomodoro status ──
+        sep = tk.Canvas(self.sidebar, height=1, bg=C["bg2"], highlightthickness=0)
+        sep.pack(fill="x", padx=15, pady=8)
+        sep.create_rectangle(0, 0, 300, 1, fill=C["muted"], outline="")
+
+        self.voice_status = tk.Label(self.sidebar, text="", font=("Consolas", 8),
+                                     bg=C["bg2"], fg=C["accent"])
+        self.voice_status.pack()
         self.pomodoro_lbl = tk.Label(self.sidebar, font=("Consolas", 8),
                                      bg=C["bg2"], fg=C["orange"], text="")
         self.pomodoro_lbl.pack()
 
-        # Estado de voz
-        self.voice_status = tk.Label(self.sidebar, text="", font=("Consolas", 9),
-                                     bg=C["bg2"], fg=C["accent"])
-        self.voice_status.pack(pady=(5, 0))
+        # ── Quick buttons ──
+        sep2 = tk.Canvas(self.sidebar, height=1, bg=C["bg2"], highlightthickness=0)
+        sep2.pack(fill="x", padx=15, pady=4)
+        sep2.create_rectangle(0, 0, 300, 1, fill=C["muted"], outline="")
 
-        # Separador
-        tk.Frame(self.sidebar, bg=C["muted"], height=1).pack(fill="x", padx=15, pady=5)
-
-        # Botones
         btns = [
-            ("🎤 Modo Voz", self._toggle_continuous_listen),
-            ("👂 Wake Word", self._toggle_wake_word),
-            ("🔇 Silenciar", self._toggle_voice),
-            ("💻 Sistema", lambda: self._quick_cmd("info del sistema")),
-            ("🧠 CPU/RAM", lambda: self._quick_cmd("cpu y ram")),
-            ("🌤️ Clima", lambda: self._quick_cmd("clima de mi ciudad")),
-            ("📰 Noticias", lambda: self._quick_cmd("noticias de hoy")),
-            ("🍅 Pomodoro", self._pomodoro_toggle),
-            ("📝 Notas", lambda: self._quick_cmd("mis notas")),
-            ("✅ Tareas", lambda: self._quick_cmd("mis tareas")),
-            ("🔐 Password", lambda: self._quick_cmd("contraseña de 20")),
-            ("📅 Schedule", self._show_schedule),
-            ("🧹 Limpiar", self._clear_output),
-            ("🧠 Reset IA", self._reset_ai),
-            ("🎨 Tema", self._cycle_theme),
-            ("⚙️ Config", self._show_config),
+            ("▸ VOZ", self._toggle_continuous_listen),
+            ("▸ WAKE", self._toggle_wake_word),
+            ("▸ MUTE", self._toggle_voice),
+            ("▸ POMODORO", self._pomodoro_toggle),
+            ("▸ SCHEDULE", self._show_schedule),
+            ("▸ RESET IA", self._reset_ai),
+            ("▸ LIMPIAR", self._clear_output),
+            ("▸ TEMA", self._cycle_theme),
+            ("▸ CONFIG", self._show_config),
         ]
 
         for text, cmd in btns:
-            b = tk.Button(self.sidebar, text=text, font=("Segoe UI", 8),
-                          bg=C["bg3"], fg=C["text"], bd=0, padx=6, pady=2,
+            b = tk.Button(self.sidebar, text=text, font=("Consolas", 8),
+                          bg=C["bg2"], fg=C["text2"], bd=0, padx=8, pady=1,
                           anchor="w", cursor="hand2", command=cmd,
-                          activebackground=C["accent"], activeforeground="black")
-            b.pack(fill="x", padx=8, pady=1)
-            b.bind("<Enter>", lambda e, b=b, c=C: b.config(bg=c["border"]))
-            b.bind("<Leave>", lambda e, b=b, c=C: b.config(bg=c["bg3"]))
+                          activebackground=glow, activeforeground="black")
+            b.pack(fill="x", padx=10, pady=0)
+            b.bind("<Enter>", lambda e, b=b, g=glow: b.config(fg=g))
+            b.bind("<Leave>", lambda e, b=b, c=C: b.config(fg=c["text2"]))
 
         # Footer
         tk.Label(self.sidebar, text=f"v{VERSION}",
                  font=("Consolas", 7), bg=C["bg2"], fg=C["muted"]).pack(side="bottom", pady=(0, 5))
-
-        # Deps
         deps = []
-        deps.append("✅ Edge" if HAS_EDGE_TTS else "❌ Edge")
-        deps.append("✅ Voz" if HAS_PYTTSX3 else "❌ Voz")
-        deps.append("✅ Mic" if HAS_SPEECH else "❌ Mic")
-        deps.append("✅ Sys" if HAS_PSUTIL else "❌ Sys")
-        tk.Label(self.sidebar, text=" ".join(deps),
-                 font=("Consolas", 6), bg=C["bg2"], fg=C["muted"]).pack(side="bottom")
+        deps.append("E" if HAS_EDGE_TTS else "·")
+        deps.append("V" if HAS_PYTTSX3 else "·")
+        deps.append("M" if HAS_SPEECH else "·")
+        deps.append("S" if HAS_PSUTIL else "·")
+        tk.Label(self.sidebar, text="[" + "|".join(deps) + "]",
+                 font=("Consolas", 7), bg=C["bg2"], fg=C["muted"]).pack(side="bottom")
 
-        # === MAIN ===
-        main = tk.Frame(self.root, bg=C["bg"])
-        main.grid(row=0, column=1, sticky="nsew")
-        main.grid_rowconfigure(0, weight=1)
-        main.grid_columnconfigure(0, weight=1)
+        # ═══ CENTER - MAIN TERMINAL ═══
+        center = tk.Frame(self.root, bg=C["bg"])
+        center.grid(row=1, column=1, sticky="nsew", padx=4, pady=4)
+        center.grid_rowconfigure(0, weight=0)
+        center.grid_rowconfigure(1, weight=1)
+        center.grid_columnconfigure(0, weight=1)
 
-        # Output
+        # Terminal header
+        term_header = tk.Frame(center, bg=C["bg3"], height=24)
+        term_header.grid(row=0, column=0, sticky="ew")
+        term_header.grid_propagate(False)
+        tk.Label(term_header, text="  ◆ TERMINAL", font=("Consolas", 9, "bold"),
+                 bg=C["bg3"], fg=glow, anchor="w").pack(side="left", padx=5)
+        self.term_status = tk.Label(term_header, text="ONLINE", font=("Consolas", 8),
+                                     bg=C["bg3"], fg=C["green"])
+        self.term_status.pack(side="right", padx=10)
+
+        # Output area with monospace font
         self.output = scrolledtext.ScrolledText(
-            main, font=("Consolas", 11), bg=C["bg"], fg=C["text"],
-            insertbackground=C["accent"], selectbackground=C["accent"],
-            selectforeground="black", bd=0, padx=15, pady=15,
-            wrap="word", state="disabled", cursor="arrow"
+            center, font=("Consolas", 11), bg="#000000", fg=C["text"],
+            insertbackground=glow, selectbackground=glow,
+            selectforeground="black", bd=0, padx=15, pady=12,
+            wrap="word", state="disabled", cursor="xterm",
+            relief="flat"
         )
-        self.output.grid(row=0, column=0, sticky="nsew", padx=(5, 10), pady=(10, 5))
+        self.output.grid(row=1, column=0, sticky="nsew")
 
         # Tags
-        self.output.tag_configure("jarvis", foreground=C["accent"])
+        self.output.tag_configure("jarvis", foreground=glow)
         self.output.tag_configure("user", foreground=C["green"])
         self.output.tag_configure("error", foreground=C["red"])
         self.output.tag_configure("info", foreground=C["yellow"])
         self.output.tag_configure("muted", foreground=C["muted"])
         self.output.tag_configure("system", foreground=C["purple"])
         self.output.tag_configure("action", foreground=C["orange"])
+        self.output.tag_configure("hud", foreground=glow, font=("Consolas", 10, "bold"))
 
         # Input area
-        input_frame = tk.Frame(main, bg=C["bg"])
-        input_frame.grid(row=1, column=0, sticky="ew", padx=(5, 10), pady=(0, 10))
+        input_frame = tk.Frame(center, bg=C["bg3"])
+        input_frame.grid(row=2, column=0, sticky="ew")
         input_frame.grid_columnconfigure(1, weight=1)
 
         self.mic_btn = tk.Button(
-            input_frame, text="🎤", font=("Segoe UI", 16),
-            bg=C["bg3"], fg=C["accent"], bd=0, padx=8,
+            input_frame, text="◉", font=("Consolas", 14),
+            bg=C["bg3"], fg=glow, bd=0, padx=8,
             cursor="hand2", command=self._voice_input,
-            activebackground=C["accent"], activeforeground="black"
+            activebackground=glow, activeforeground="black"
         )
-        self.mic_btn.grid(row=0, column=0, padx=(0, 5), sticky="ns")
+        self.mic_btn.grid(row=0, column=0, padx=(5, 0), sticky="ns")
+
+        tk.Label(input_frame, text="❯", font=("Consolas", 14, "bold"),
+                 bg=C["bg3"], fg=glow).grid(row=0, column=0, padx=(35, 0), sticky="w")
 
         self.entry = tk.Entry(
-            input_frame, font=("Consolas", 13),
-            bg=C["bg3"], fg=C["text"], insertbackground=C["accent"],
-            selectbackground=C["accent"], bd=0, relief="flat"
+            input_frame, font=("Consolas", 12),
+            bg=C["bg3"], fg=C["text"], insertbackground=glow,
+            selectbackground=glow, bd=0, relief="flat"
         )
-        self.entry.grid(row=0, column=1, sticky="ew", ipady=10)
+        self.entry.grid(row=0, column=1, sticky="ew", ipady=10, padx=(5, 5))
         self.entry.focus_set()
 
         send_btn = tk.Button(
-            input_frame, text="▶", font=("Segoe UI", 14, "bold"),
-            bg=C["accent"], fg="black", bd=0, padx=15,
+            input_frame, text="▶", font=("Consolas", 12, "bold"),
+            bg=glow, fg="black", bd=0, padx=12,
             cursor="hand2", command=self._send,
             activebackground=C["green"]
         )
-        send_btn.grid(row=0, column=2, padx=(5, 0), sticky="ns")
+        send_btn.grid(row=0, column=2, padx=(0, 5), sticky="ns", pady=3)
+
+        # ═══ RIGHT PANEL - INFO ═══
+        self.right_panel = tk.Frame(self.root, bg=C["bg2"], width=220)
+        self.right_panel.grid(row=1, column=2, sticky="nse", padx=(0, 4), pady=4)
+        self.right_panel.grid_propagate(False)
+
+        self._draw_panel_border(self.right_panel, glow)
+
+        # System info panel
+        tk.Label(self.right_panel, text="◈ SYSTEM", font=("Consolas", 9, "bold"),
+                 bg=C["bg2"], fg=glow).pack(pady=(10, 5))
+
+        self.sys_info_lbl = tk.Label(self.right_panel, font=("Consolas", 7),
+                                      bg=C["bg2"], fg=C["text2"], justify="left", anchor="w")
+        self.sys_info_lbl.pack(padx=10, fill="x")
+
+        sep3 = tk.Canvas(self.right_panel, height=1, bg=C["bg2"], highlightthickness=0)
+        sep3.pack(fill="x", padx=15, pady=8)
+        sep3.create_rectangle(0, 0, 300, 1, fill=C["muted"], outline="")
+
+        # Network info
+        tk.Label(self.right_panel, text="◈ NETWORK", font=("Consolas", 9, "bold"),
+                 bg=C["bg2"], fg=C["green"]).pack(pady=(0, 5))
+        self.net_info_lbl = tk.Label(self.right_panel, font=("Consolas", 7),
+                                      bg=C["bg2"], fg=C["text2"], justify="left", anchor="w")
+        self.net_info_lbl.pack(padx=10, fill="x")
+
+        sep4 = tk.Canvas(self.right_panel, height=1, bg=C["bg2"], highlightthickness=0)
+        sep4.pack(fill="x", padx=15, pady=8)
+        sep4.create_rectangle(0, 0, 300, 1, fill=C["muted"], outline="")
+
+        # Disk info
+        tk.Label(self.right_panel, text="◈ STORAGE", font=("Consolas", 9, "bold"),
+                 bg=C["bg2"], fg=C["orange"]).pack(pady=(0, 5))
+        self.disk_info_lbl = tk.Label(self.right_panel, font=("Consolas", 7),
+                                       bg=C["bg2"], fg=C["text2"], justify="left", anchor="w")
+        self.disk_info_lbl.pack(padx=10, fill="x")
+
+        sep5 = tk.Canvas(self.right_panel, height=1, bg=C["bg2"], highlightthickness=0)
+        sep5.pack(fill="x", padx=15, pady=8)
+        sep5.create_rectangle(0, 0, 300, 1, fill=C["muted"], outline="")
+
+        # Quick action buttons (right panel)
+        r_btns = [
+            ("▸ SISTEMA", lambda: self._quick_cmd("info del sistema")),
+            ("▸ CPU/RAM", lambda: self._quick_cmd("cpu y ram")),
+            ("▸ CLIMA", lambda: self._quick_cmd("clima de mi ciudad")),
+            ("▸ NOTICIAS", lambda: self._quick_cmd("noticias de hoy")),
+            ("▸ NOTAS", lambda: self._quick_cmd("mis notas")),
+            ("▸ TAREAS", lambda: self._quick_cmd("mis tareas")),
+            ("▸ PASSWORD", lambda: self._quick_cmd("contraseña de 20")),
+            ("▸ HELP", lambda: self._quick_cmd("help")),
+        ]
+
+        for text, cmd in r_btns:
+            b = tk.Button(self.right_panel, text=text, font=("Consolas", 8),
+                          bg=C["bg2"], fg=C["text2"], bd=0, padx=8, pady=1,
+                          anchor="w", cursor="hand2", command=cmd,
+                          activebackground=glow, activeforeground="black")
+            b.pack(fill="x", padx=10, pady=0)
+            b.bind("<Enter>", lambda e, b=b, g=glow: b.config(fg=g))
+            b.bind("<Leave>", lambda e, b=b, c=C: b.config(fg=c["text2"]))
+
+        # ═══ BOTTOM STATUS BAR ═══
+        self.bottom_bar = tk.Frame(self.root, bg=C["bg3"], height=22)
+        self.bottom_bar.grid(row=2, column=0, columnspan=3, sticky="ew")
+        self.bottom_bar.grid_propagate(False)
 
         self.status_lbl = tk.Label(
-            input_frame, text="💡 Di 'Jarvis' o escribe tu comando.",
-            font=("Segoe UI", 8), bg=C["bg"], fg=C["muted"], anchor="w"
+            self.bottom_bar, text="  ◆ READY", font=("Consolas", 8),
+            bg=C["bg3"], fg=glow, anchor="w"
         )
-        self.status_lbl.grid(row=1, column=0, columnspan=3, sticky="w", pady=(3, 0))
+        self.status_lbl.pack(side="left", padx=5)
+
+        self.uptime_lbl = tk.Label(
+            self.bottom_bar, text="", font=("Consolas", 8),
+            bg=C["bg3"], fg=C["text2"]
+        )
+        self.uptime_lbl.pack(side="right", padx=10)
 
         # Bindings
         self.entry.bind("<Return>", lambda e: self._send())
@@ -1596,49 +1749,160 @@ class JarvisGodMode:
         self.root.bind("<Control-l>", lambda e: self._clear_output())
         self.root.bind("<Control-e>", lambda e: self._export_conversation())
 
+        # Populate right panel info
+        self._update_right_panel()
+
         # Clock & Monitor loop
         self._tick()
+
+    def _draw_panel_border(self, frame, color):
+        """Dibujar borde glow en un panel."""
+        top = tk.Canvas(frame, height=2, bg=frame["bg"], highlightthickness=0)
+        top.pack(fill="x", side="top")
+        top.create_rectangle(0, 0, 2000, 2, fill=color, outline="")
+
+    def _draw_arc_gauge(self, canvas, pct, color, bg_color="#1A1A1A"):
+        """Dibujar arco circular estilo EDEX-UI."""
+        canvas.delete("all")
+        w = canvas.winfo_width() or 180
+        h = canvas.winfo_height() or 100
+        cx, cy = w // 2, h - 5
+        r = min(w // 2 - 10, h - 15)
+
+        # Background arc
+        canvas.create_arc(cx - r, cy - r, cx + r, cy + r,
+                          start=0, extent=180, style="arc",
+                          outline=bg_color, width=8)
+
+        # Filled arc
+        extent = int(180 * pct / 100)
+        if extent > 0:
+            canvas.create_arc(cx - r, cy - r, cx + r, cy + r,
+                              start=180, extent=-extent, style="arc",
+                              outline=color, width=8)
+
+        # Tick marks
+        import math as _m
+        for i in range(0, 181, 18):
+            angle = _m.radians(i)
+            x1 = cx + (r + 5) * _m.cos(angle)
+            y1 = cy - (r + 5) * _m.sin(angle)
+            x2 = cx + (r + 10) * _m.cos(angle)
+            y2 = cy - (r + 10) * _m.sin(angle)
+            canvas.create_line(x1, y1, x2, y2, fill=bg_color, width=1)
+
+    def _update_right_panel(self):
+        """Populate system info on right panel."""
+        try:
+            sys_lines = []
+            sys_lines.append(f"OS: {platform.system()} {platform.release()}")
+            sys_lines.append(f"PC: {platform.node()}")
+            sys_lines.append(f"Py: {platform.python_version()}")
+            sys_lines.append(f"CPU: {os.cpu_count()} cores")
+            if HAS_PSUTIL:
+                ram = psutil.virtual_memory()
+                sys_lines.append(f"RAM: {ram.total / 1024**3:.1f} GB")
+                bat = psutil.sensors_battery()
+                if bat:
+                    plug = "AC" if bat.power_plugged else "BAT"
+                    sys_lines.append(f"BAT: {bat.percent}% [{plug}]")
+            self.sys_info_lbl.config(text="\n".join(sys_lines))
+        except Exception:
+            self.sys_info_lbl.config(text="N/A")
+
+        # Network
+        try:
+            hostname = socket.gethostname()
+            local_ip = socket.gethostbyname(hostname)
+            self.net_info_lbl.config(text=f"Host: {hostname}\nIP: {local_ip}")
+        except Exception:
+            self.net_info_lbl.config(text="N/A")
+
+        # Disk
+        try:
+            disk_lines = []
+            if os.name == "nt":
+                for letter in "CDE":
+                    drive = f"{letter}:\\"
+                    if os.path.exists(drive):
+                        u = shutil.disk_usage(drive)
+                        pct = u.used / u.total * 100
+                        free_gb = u.free / 1024**3
+                        disk_lines.append(f"{drive} {pct:.0f}% ({free_gb:.0f}GB free)")
+            else:
+                u = shutil.disk_usage("/")
+                pct = u.used / u.total * 100
+                disk_lines.append(f"/ {pct:.0f}% ({u.free/1024**3:.0f}GB free)")
+            self.disk_info_lbl.config(text="\n".join(disk_lines))
+        except Exception:
+            self.disk_info_lbl.config(text="N/A")
 
     # ─── RELOJ + MONITOR ─────────────────────────────
 
     def _tick(self):
         C = self.theme
+        glow = C.get("glow", C["accent"])
         now = datetime.datetime.now()
-        self.clock_lbl.config(text=now.strftime("%H:%M:%S"))
-        dias = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
-        self.date_lbl.config(text=f"{dias[now.weekday()]} {now.day}/{now.month:02d}/{now.year}")
 
-        # Monitor CPU/RAM
+        # HUD clock
+        self.hud_clock.config(text=now.strftime("%H:%M:%S"))
+        dias = ["LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB", "DOM"]
+        self.hud_date.config(text=f"{dias[now.weekday()]} {now.day:02d}/{now.month:02d}/{now.year}")
+
+        # HUD provider
+        p = self.config.get("provider", "groq").upper()
+        m = self.config.get("model", "")
+        self.hud_provider.config(text=f"[{p}:{m[:20]}]")
+
+        # Monitor CPU/RAM + gauges
         if HAS_PSUTIL:
-            self.monitor_lbl.config(
-                text=f"CPU: {self.monitor.cpu:.0f}% | RAM: {self.monitor.ram:.0f}%"
-            )
+            cpu = self.monitor.cpu
+            ram = self.monitor.ram
+            self.hud_cpu.config(text=f"CPU:{cpu:.0f}%")
+            self.hud_ram.config(text=f"RAM:{ram:.0f}%")
+
+            # Update arc gauges
+            self._draw_arc_gauge(self.cpu_canvas, cpu, glow)
+            self.cpu_val_lbl.config(text=f"{cpu:.0f}%")
+            self._draw_arc_gauge(self.ram_canvas, ram, C["yellow"])
+            self.ram_val_lbl.config(text=f"{ram:.0f}%")
+
+        # Uptime
+        elapsed = int((now - datetime.datetime.fromtimestamp(
+            getattr(self, '_start_ts', now.timestamp()))).total_seconds())
+        h, m_s = divmod(elapsed, 3600)
+        m_v, s_v = divmod(m_s, 60)
+        self.uptime_lbl.config(text=f"UPTIME {h:02d}:{m_v:02d}:{s_v:02d}")
 
         # Pomodoro
         if self.pomodoro.running:
             mins = self.pomodoro.remaining // 60
             secs = self.pomodoro.remaining % 60
-            phase = "🔴 TRABAJO" if self.pomodoro.phase == "work" else "🟢 DESCANSO"
-            self.pomodoro_lbl.config(text=f"🍅 {phase} {mins:02d}:{secs:02d}")
+            phase = "▶ WORK" if self.pomodoro.phase == "work" else "▷ BREAK"
+            self.pomodoro_lbl.config(text=f"◈ {phase} {mins:02d}:{secs:02d}")
         else:
             self.pomodoro_lbl.config(text="")
 
         # Voice status
         if self.voice.is_listening:
-            self.voice_status.config(text="🎤 Escuchando...", fg=C["red"])
+            self.voice_status.config(text="◉ LISTENING", fg=C["red"])
             self.mic_btn.config(bg=C["red"], fg="white")
         elif self.voice.is_speaking:
-            self.voice_status.config(text="🔊 Hablando...", fg=C["green"])
-            self.mic_btn.config(bg=C["bg3"], fg=C["accent"])
+            self.voice_status.config(text="◉ SPEAKING", fg=C["green"])
+            self.mic_btn.config(bg=C["bg3"], fg=glow)
         elif self.wake_word_mode:
-            self.voice_status.config(text="👂 Wake word activo", fg=C["purple"])
+            self.voice_status.config(text="◉ WAKE WORD", fg=C["purple"])
             self.mic_btn.config(bg=C["bg3"], fg=C["purple"])
         elif self.continuous_listen:
-            self.voice_status.config(text="🎤 Modo voz", fg=C["accent"])
-            self.mic_btn.config(bg=C["bg3"], fg=C["accent"])
+            self.voice_status.config(text="◉ VOICE MODE", fg=glow)
+            self.mic_btn.config(bg=C["bg3"], fg=glow)
         else:
             self.voice_status.config(text="")
-            self.mic_btn.config(bg=C["bg3"], fg=C["accent"])
+            self.mic_btn.config(bg=C["bg3"], fg=glow)
+
+        # Update right panel info every 10 seconds
+        if int(now.timestamp()) % 10 == 0:
+            self._update_right_panel()
 
         self.root.after(500, self._tick)
 
@@ -2237,42 +2501,85 @@ class JarvisGodMode:
         self.config["theme"] = theme_key
         self.theme = THEMES[theme_key]
         C = self.theme
+        glow = C.get("glow", C["accent"])
         DataStore.save(CONFIG_FILE, self.config)
 
-        # Aplicar colores a toda la UI
+        # Root
         self.root.configure(bg=C["bg"])
+
+        # HUD bar
+        self.hud_bar.configure(bg=C["bg"])
+        for w in self.hud_bar.winfo_children():
+            try:
+                w.configure(bg=C["bg"])
+                for child in w.winfo_children():
+                    child.configure(bg=C["bg"])
+            except tk.TclError:
+                pass
+        self.hud_clock.config(fg=glow, bg=C["bg"])
+        self.hud_date.config(fg=C["text2"], bg=C["bg"])
+        self.hud_cpu.config(fg=C["green"], bg=C["bg"])
+        self.hud_ram.config(fg=C["yellow"], bg=C["bg"])
+        self.hud_provider.config(fg=C["accent"], bg=C["bg"])
+
+        # Sidebar
         self.sidebar.configure(bg=C["bg2"])
         for widget in self.sidebar.winfo_children():
             try:
                 if isinstance(widget, tk.Button):
-                    widget.configure(bg=C["bg3"], fg=C["text"], activebackground=C["accent"])
-                    widget.bind("<Enter>", lambda e, b=widget, c=C: b.config(bg=c["border"]))
-                    widget.bind("<Leave>", lambda e, b=widget, c=C: b.config(bg=c["bg3"]))
+                    widget.configure(bg=C["bg2"], fg=C["text2"],
+                                     activebackground=glow, activeforeground="black")
+                    widget.bind("<Enter>", lambda e, b=widget, g=glow: b.config(fg=g))
+                    widget.bind("<Leave>", lambda e, b=widget, c=C: b.config(fg=c["text2"]))
                 elif isinstance(widget, tk.Label):
                     widget.configure(bg=C["bg2"])
-                elif isinstance(widget, tk.Frame):
-                    widget.configure(bg=C["muted"])
+                elif isinstance(widget, tk.Canvas):
+                    widget.configure(bg=C["bg2"])
             except tk.TclError:
                 pass
-        self.clock_lbl.config(fg=C["green"], bg=C["bg2"])
-        self.date_lbl.config(fg=C["text2"], bg=C["bg2"])
-        self.monitor_lbl.config(fg=C["yellow"], bg=C["bg2"])
+        self.cpu_val_lbl.config(fg=glow, bg=C["bg2"])
+        self.ram_val_lbl.config(fg=C["yellow"], bg=C["bg2"])
         self.pomodoro_lbl.config(fg=C["orange"], bg=C["bg2"])
         self.voice_status.config(fg=C["accent"], bg=C["bg2"])
-        self.output.config(bg=C["bg"], fg=C["text"], insertbackground=C["accent"],
-                           selectbackground=C["accent"])
-        self.output.tag_configure("jarvis", foreground=C["accent"])
+
+        # Right panel
+        self.right_panel.configure(bg=C["bg2"])
+        for widget in self.right_panel.winfo_children():
+            try:
+                if isinstance(widget, tk.Button):
+                    widget.configure(bg=C["bg2"], fg=C["text2"],
+                                     activebackground=glow, activeforeground="black")
+                    widget.bind("<Enter>", lambda e, b=widget, g=glow: b.config(fg=g))
+                    widget.bind("<Leave>", lambda e, b=widget, c=C: b.config(fg=c["text2"]))
+                elif isinstance(widget, tk.Label):
+                    widget.configure(bg=C["bg2"])
+                elif isinstance(widget, tk.Canvas):
+                    widget.configure(bg=C["bg2"])
+            except tk.TclError:
+                pass
+
+        # Output
+        self.output.config(bg="#000000", fg=C["text"], insertbackground=glow,
+                           selectbackground=glow)
+        self.output.tag_configure("jarvis", foreground=glow)
         self.output.tag_configure("user", foreground=C["green"])
         self.output.tag_configure("error", foreground=C["red"])
         self.output.tag_configure("info", foreground=C["yellow"])
         self.output.tag_configure("muted", foreground=C["muted"])
         self.output.tag_configure("system", foreground=C["purple"])
         self.output.tag_configure("action", foreground=C["orange"])
-        self.entry.config(bg=C["bg3"], fg=C["text"], insertbackground=C["accent"])
-        self.mic_btn.config(bg=C["bg3"], fg=C["accent"])
-        self.status_lbl.config(bg=C["bg"], fg=C["muted"])
+        self.output.tag_configure("hud", foreground=glow)
 
-        self._print_jarvis(f"Tema aplicado: {THEMES[theme_key]['name']}.")
+        # Input
+        self.entry.config(bg=C["bg3"], fg=C["text"], insertbackground=glow)
+        self.mic_btn.config(bg=C["bg3"], fg=glow)
+        self.status_lbl.config(bg=C["bg3"], fg=glow)
+
+        # Bottom bar
+        self.bottom_bar.configure(bg=C["bg3"])
+        self.uptime_lbl.config(bg=C["bg3"], fg=C["text2"])
+
+        self._print_jarvis(f"◆ Tema aplicado: {THEMES[theme_key]['name']}")
 
     # ─── CLIPBOARD HISTORY ───────────────────────────
 
@@ -2373,34 +2680,42 @@ class JarvisGodMode:
 
     def _animated_startup(self):
         C = self.theme
+        glow = C.get("glow", C["accent"])
         SoundFX.beep_startup()
 
-        # Fase 1: Líneas de arranque del sistema
+        # Boot sequence lines
         boot_lines = [
-            "Iniciando núcleos de procesamiento...",
-            "Cargando módulos de inteligencia artificial...",
-            "Calibrando motores de voz...",
-            "Verificando conexión con proveedores de IA...",
-            "Escaneando sistemas del equipo...",
-            "Activando protocolos de seguridad...",
+            "[CORE] Initializing neural processing units...",
+            "[CORE] Loading AI inference modules...",
+            "[VOICE] Calibrating speech synthesis engine...",
+            "[NET] Verifying AI provider connections...",
+            "[SYS] Scanning hardware subsystems...",
+            "[SEC] Activating security protocols...",
+            "[AI] Running self-diagnostics...",
         ]
 
-        # Mostrar banner
+        # EDEX-UI style banner
         self._print(f"""
-⚡ ═══════════════════════════════════════════════════ ⚡
-       J.A.R.V.I.S. GOD MODE  v{VERSION}
-       Just A Rather Very Intelligent System
-       "{THEMES.get(self.config.get('theme', 'jarvis'), {}).get('name', 'Classic')}" Theme
-⚡ ═══════════════════════════════════════════════════ ⚡
-""", "jarvis")
+ ╔══════════════════════════════════════════════════════╗
+ ║                                                      ║
+ ║     ██╗ █████╗ ██████╗ ██╗   ██╗██╗███████╗         ║
+ ║     ██║██╔══██╗██╔══██╗██║   ██║██║██╔════╝         ║
+ ║     ██║███████║██████╔╝██║   ██║██║███████╗         ║
+ ║██   ██║██╔══██║██╔══██╗╚██╗ ██╔╝██║╚════██║         ║
+ ║╚█████╔╝██║  ██║██║  ██║ ╚████╔╝ ██║███████║         ║
+ ║ ╚════╝ ╚═╝  ╚═╝╚═╝  ╚═╝  ╚═══╝  ╚═╝╚══════╝         ║
+ ║              GOD MODE v{VERSION}                        ║
+ ║      Just A Rather Very Intelligent System           ║
+ ╚══════════════════════════════════════════════════════╝
+""", "hud")
 
-        # Boot sequence
+        # Animated boot sequence
         def show_boot_line(idx):
             if idx < len(boot_lines):
                 self._print(f"  ▸ {boot_lines[idx]}", "muted")
-                self.root.after(200, lambda: show_boot_line(idx + 1))
+                self.root.after(150, lambda: show_boot_line(idx + 1))
             else:
-                self.root.after(300, self._show_greeting)
+                self.root.after(200, self._show_greeting)
 
         show_boot_line(0)
 
@@ -2417,24 +2732,24 @@ class JarvisGodMode:
         provider = self.config.get("provider", "gemini")
         pinfo = PROVIDERS.get(provider, {})
 
-        self._print("  ▸ Todos los sistemas: ONLINE ✓\n", "info")
+        self._print("  ▸ All systems: ONLINE ◆\n", "info")
 
-        greeting = f"{period}, {name}. Todos los sistemas están operativos."
-        self._print_jarvis(greeting)
+        greeting = f"{period}, {name}. Todos los sistemas operativos."
+        self._print_jarvis(f"◆ {greeting}")
 
-        # Estado del cerebro
+        # AI Status
         if self.brain.ready:
             model = self.config.get("model", "") or pinfo.get("default_model", "")
-            self._print(f"  🧠 IA: {pinfo.get('name', provider)} → {model}", "muted")
+            self._print(f"  ◈ AI: {pinfo.get('name', provider)} → {model}", "muted")
         else:
             if provider == "ollama":
-                self._print("  ⚠️ Ollama no conectado. Asegúrate de tenerlo corriendo.", "muted")
+                self._print("  ◈ Ollama no conectado. Asegúrate de tenerlo corriendo.", "muted")
             elif not self.config.get("api_key"):
-                self._print(f"  ⚠️ Sin API key. Configura: config api: TU_KEY", "muted")
-                self._print(f"  ℹ️ Gratis: {pinfo.get('get_key_url', '')}", "muted")
+                self._print(f"  ◈ Sin API key. Configura: config api: TU_KEY", "muted")
+                self._print(f"  ◈ Gratis: {pinfo.get('get_key_url', '')}", "muted")
 
-        tts_engine = "Edge TTS (voces realistas)" if HAS_EDGE_TTS else "pyttsx3" if HAS_PYTTSX3 else "Sin voz"
-        self._print(f"  🔊 Voz: {tts_engine}", "muted")
+        tts_engine = "Edge TTS" if HAS_EDGE_TTS else "pyttsx3" if HAS_PYTTSX3 else "Sin voz"
+        self._print(f"  ◈ Voice: {tts_engine}", "muted")
 
         # Deps
         missing = []
@@ -2447,9 +2762,10 @@ class JarvisGodMode:
         if not HAS_PSUTIL:
             missing.append("psutil")
         if missing:
-            self._print(f"  📦 Opcional: pip install {' '.join(missing)}", "muted")
+            self._print(f"  ◈ Install: pip install {' '.join(missing)}", "muted")
 
         self._print("", "muted")
+        self.status_lbl.config(text=f"  ◆ {greeting}")
 
         self.voice.speak(greeting)
 

@@ -6,12 +6,12 @@
 
 ## 🚀 Versiones
 
-| Archivo | Versión | Líneas | Descripción |
-|---------|---------|--------|-------------|
-| `jarvis_ai_jeanCarlo.py` | v1.0 | ~140 | Original — Tkinter básico |
-| `jarvis_pro_ultra.py` | v2.0 | ~1700 | 60+ comandos, persistencia |
-| `jarvis_ultimate.py` | v3.5 | ~1500 | Voz + IA multi-proveedor |
-| **`jarvis_god_mode.py`** | **v4.2** | **~2200** | **La versión definitiva** |
+| Archivo                  | Versión  | Líneas    | Descripción                |
+| ------------------------ | -------- | --------- | -------------------------- |
+| `jarvis_ai_jeanCarlo.py` | v1.0     | ~140      | Original — Tkinter básico  |
+| `jarvis_pro_ultra.py`    | v2.0     | ~1700     | 60+ comandos, persistencia |
+| `jarvis_ultimate.py`     | v3.5     | ~1500     | Voz + IA multi-proveedor   |
+| **`jarvis_god_mode.py`** | **v4.2** | **~2200** | **La versión definitiva**  |
 
 ## ✨ Características (God Mode v4.2)
 
@@ -62,16 +62,16 @@ python jarvis_god_mode.py
 
 ## 🎮 Comandos Rápidos
 
-| Comando | Acción |
-|---------|--------|
-| `ayuda` | Ver todos los comandos |
-| `notas` | Ver notas guardadas |
-| `tareas` | Ver tareas pendientes |
-| `pomodoro 25` | Iniciar Pomodoro |
-| `config tema: ironman` | Cambiar tema |
-| `config voz: dalia` | Cambiar voz |
-| `exportar` | Guardar chat |
-| `uptime` | Tiempo activo |
+| Comando                | Acción                 |
+| ---------------------- | ---------------------- |
+| `ayuda`                | Ver todos los comandos |
+| `notas`                | Ver notas guardadas    |
+| `tareas`               | Ver tareas pendientes  |
+| `pomodoro 25`          | Iniciar Pomodoro       |
+| `config tema: ironman` | Cambiar tema           |
+| `config voz: dalia`    | Cambiar voz            |
+| `exportar`             | Guardar chat           |
+| `uptime`               | Tiempo activo          |
 
 ## 🛠️ Tecnologías
 
