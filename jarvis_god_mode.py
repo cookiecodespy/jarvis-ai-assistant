@@ -891,6 +891,13 @@ class ActionExecutor:
 
     # ─── Web ─────────────────────────────────────────
 
+    def _open_in_browser(self, url):
+        """Open URL in default browser — uses os.startfile on Windows for Edge compatibility."""
+        try:
+            os.startfile(url)
+        except Exception:
+            webbrowser.open_new_tab(url)
+
     def _open_web(self, url):
         # Avoid opening duplicate YouTube/Google search URLs that the AI sometimes generates
         url_lower = url.lower().strip()
@@ -900,7 +907,7 @@ class ActionExecutor:
             return None  # Already handled by _search_google
         if not url.startswith("http"):
             url = "https://" + url
-        webbrowser.open_new_tab(url)
+        self._open_in_browser(url)
         return None
 
     def _search_google(self, query):
@@ -911,7 +918,7 @@ class ActionExecutor:
         if not query:
             return None
         url = f"https://www.google.com/search?q={urllib.parse.quote(query)}"
-        webbrowser.open_new_tab(url)
+        self._open_in_browser(url)
         return None
 
     def _search_youtube(self, query):
@@ -923,7 +930,7 @@ class ActionExecutor:
         if not query:
             return None
         url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(query)}"
-        webbrowser.open_new_tab(url)
+        self._open_in_browser(url)
         return None
 
     # ─── Notas / Tareas ─────────────────────────────
@@ -2993,6 +3000,29 @@ class JarvisGodMode:
             r = self.executor._open_program(prog)
             if r:
                 self._print_jarvis(r)
+            return
+
+        # ── YouTube directo (sin IA) ──
+        if comando.startswith("youtube ") or comando.startswith("yt "):
+            query = re.sub(r'^(youtube|yt)\s+', '', text, flags=re.IGNORECASE).strip()
+            if query:
+                url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(query)}"
+                self.executor._open_in_browser(url)
+                self._print_jarvis(f"Buscando en YouTube: {query}")
+                self.voice.speak(f"Buscando en YouTube, señor.")
+            else:
+                self._print_jarvis("Uso: youtube <lo que quieras buscar>")
+            return
+
+        # ── Google directo (sin IA) ──
+        if comando.startswith("google "):
+            query = re.sub(r'^google\s+', '', text, flags=re.IGNORECASE).strip()
+            if query:
+                url = f"https://www.google.com/search?q={urllib.parse.quote(query)}"
+                self.executor._open_in_browser(url)
+                self._print_jarvis(f"Buscando en Google: {query}")
+            else:
+                self._print_jarvis("Uso: google <lo que quieras buscar>")
             return
 
         # ── Pomodoro mejorado para estudio ──
