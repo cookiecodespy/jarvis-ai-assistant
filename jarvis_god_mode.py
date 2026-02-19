@@ -910,7 +910,7 @@ class ActionExecutor:
             ram = psutil.virtual_memory()
             lines.append(f"RAM: {ram.used/1024**3:.1f}/{ram.total/1024**3:.1f} GB ({ram.percent}%)")
             lines.append(f"CPU: {psutil.cpu_percent(interval=0.5)}%")
-        return "💻 " + " | ".join(lines)
+        return "◈ SYSTEM: " + " | ".join(lines)
 
     def _get_cpu_info(self):
         if not HAS_PSUTIL:
@@ -919,7 +919,7 @@ class ActionExecutor:
         ram = psutil.virtual_memory()
         avg = sum(cpu_pct) / len(cpu_pct)
         return (
-            f"🧠 CPU: {self._bar(avg)} {avg:.0f}% (núcleos: {', '.join(f'{p:.0f}%' for p in cpu_pct)})\n"
+            f"◈ CPU: {self._bar(avg)} {avg:.0f}% (cores: {', '.join(f'{p:.0f}%' for p in cpu_pct)})\n"
             f"🗃️ RAM: {self._bar(ram.percent)} {ram.percent}% ({ram.used/1024**3:.1f}/{ram.total/1024**3:.1f} GB)"
         )
 
@@ -958,7 +958,7 @@ class ActionExecutor:
         bat = psutil.sensors_battery()
         if not bat:
             return "Sin batería detectada (PC de escritorio)."
-        plug = "🔌 Conectado" if bat.power_plugged else "🔋 Batería"
+        plug = "AC" if bat.power_plugged else "BAT"
         return f"{self._bar(bat.percent)} {bat.percent}% ({plug})"
 
     # ─── CLIMA (wttr.in - GRATIS) ────────────────────
@@ -968,19 +968,19 @@ class ActionExecutor:
         try:
             city_encoded = urllib.parse.quote(city.strip())
             url = f"https://wttr.in/{city_encoded}?format=%l:+%c+%t+%h+%w+%p&lang=es"
-            req = urllib.request.Request(url, headers={"User-Agent": "Jarvis/4.0"})
+            req = urllib.request.Request(url, headers={"User-Agent": "Jarvis/5.0"})
             with urllib.request.urlopen(req, timeout=10) as resp:
-                weather = resp.read().decode("utf-8").strip()
+                weather = resp.read().decode("utf-8", errors="replace").strip()
 
             # También obtener pronóstico corto
-            url2 = f"https://wttr.in/{city_encoded}?format=%l:+%c+%t+|+Sensación:+%f+|+Humedad:+%h+|+Viento:+%w&lang=es"
-            req2 = urllib.request.Request(url2, headers={"User-Agent": "Jarvis/4.0"})
+            url2 = f"https://wttr.in/{city_encoded}?format=%l:+%c+%t+|+Sensacion:+%f+|+Humedad:+%h+|+Viento:+%w&lang=es"
+            req2 = urllib.request.Request(url2, headers={"User-Agent": "Jarvis/5.0"})
             with urllib.request.urlopen(req2, timeout=10) as resp2:
-                detailed = resp2.read().decode("utf-8").strip()
+                detailed = resp2.read().decode("utf-8", errors="replace").strip()
 
-            return f"🌤️ {detailed}"
+            return f"◈ CLIMA: {detailed}"
         except Exception as e:
-            return f"🌤️ No pude obtener el clima: {e}"
+            return f"◈ No pude obtener el clima: {str(e).encode('ascii', errors='replace').decode()}"
 
     # ─── TRADUCTOR (MyMemory API - GRATIS) ───────────
 
@@ -1036,13 +1036,13 @@ class ActionExecutor:
                 headlines = [t.strip() for t in all_titles[1:8] if t.strip()]  # Skip feed title
 
             if headlines:
-                result = "📰 NOTICIAS:\n"
+                result = "◈ NOTICIAS:\n"
                 for i, h in enumerate(headlines, 1):
                     result += f"  {i}. {h}\n"
                 return result
-            return "📰 No pude obtener noticias."
+            return "◈ No pude obtener noticias."
         except Exception as e:
-            return f"📰 Error: {e}"
+            return f"◈ Error noticias: {e}"
 
     # ─── BUSCAR ARCHIVOS ─────────────────────────────
 
@@ -1125,9 +1125,9 @@ class ActionExecutor:
         try:
             self.app.root.clipboard_clear()
             self.app.root.clipboard_append(pwd)
-            return f"🔐 {pwd}\n(Copiada al portapapeles)"
+            return f"◈ KEY: {pwd}\n(Copiada al portapapeles)"
         except Exception:
-            return f"🔐 {pwd}"
+            return f"◈ KEY: {pwd}"
 
     def _calculate(self, expr):
         try:
@@ -1274,11 +1274,11 @@ class Scheduler:
     def list_tasks(self):
         dias = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
         if not self.tasks:
-            return "📅 No hay tareas programadas."
-        lines = ["📅 TAREAS PROGRAMADAS:", "═" * 35]
+            return "◈ No hay tareas programadas."
+        lines = ["◈ SCHEDULED TASKS:", "═" * 35]
         for i, t in enumerate(self.tasks):
             days_str = ", ".join(dias[d] for d in t.get("days", []))
-            status = "✅" if t.get("enabled") else "❌"
+            status = "[ON]" if t.get("enabled") else "[OFF]"
             lines.append(f"  {i+1}. {status} {t['description']}")
             lines.append(f"     ⏰ {t['time']} | {days_str}")
         return "\n".join(lines)
@@ -1337,20 +1337,20 @@ class PomodoroTimer:
         self.sessions += 1
         self.thread = threading.Thread(target=self._loop, daemon=True)
         self.thread.start()
-        return f"🍅 Pomodoro #{self.sessions} iniciado: {work} min de trabajo."
+        return f"◈ Pomodoro #{self.sessions} iniciado: {work} min de trabajo."
 
     def stop(self):
         self.running = False
         self.phase = "idle"
-        return "🍅 Pomodoro detenido."
+        return "◈ Pomodoro detenido."
 
     def status(self):
         if not self.running:
-            return f"🍅 Pomodoro inactivo. Sesiones completadas hoy: {self.sessions}"
+            return f"◈ Pomodoro inactivo. Sesiones hoy: {self.sessions}"
         mins = self.remaining // 60
         secs = self.remaining % 60
-        phase_name = "TRABAJO" if self.phase == "work" else "DESCANSO"
-        return f"🍅 {phase_name}: {mins:02d}:{secs:02d} restantes (sesión #{self.sessions})"
+        phase_name = "WORK" if self.phase == "work" else "BREAK"
+        return f"◈ {phase_name}: {mins:02d}:{secs:02d} restantes (session #{self.sessions})"
 
     def _loop(self):
         while self.running and self.remaining > 0:
@@ -1363,12 +1363,12 @@ class PomodoroTimer:
         if self.phase == "work":
             self.phase = "break"
             self.remaining = self.break_minutes * 60
-            self.callback("pomodoro_break", f"🍅 ¡Tiempo! Descanso de {self.break_minutes} min.")
+            self.callback("pomodoro_break", f"◈ Break time! {self.break_minutes} min.")
             self._loop()  # Continue with break
         elif self.phase == "break":
             self.phase = "idle"
             self.running = False
-            self.callback("pomodoro_done", f"🍅 Pomodoro #{self.sessions} completado. ¡Buen trabajo!")
+            self.callback("pomodoro_done", f"◈ Pomodoro #{self.sessions} completado.")
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1752,6 +1752,10 @@ class JarvisGodMode:
         # Populate right panel info
         self._update_right_panel()
 
+        # Start visual effects
+        self.root.after(1000, self._start_matrix_rain)
+        self.root.after(1500, self._start_network_pulse)
+
         # Clock & Monitor loop
         self._tick()
 
@@ -1837,6 +1841,102 @@ class JarvisGodMode:
         except Exception:
             self.disk_info_lbl.config(text="N/A")
 
+    # ─── MATRIX RAIN EFFECT ─────────────────────────
+
+    def _start_matrix_rain(self):
+        """Initialize matrix rain on the sidebar background."""
+        self._matrix_drops = []
+        self._matrix_canvas = tk.Canvas(self.sidebar, bg=self.theme["bg2"],
+                                         highlightthickness=0, width=230, height=60)
+        self._matrix_canvas.pack(side="bottom", fill="x")
+        import random as _rnd
+        for i in range(12):
+            x = _rnd.randint(5, 220)
+            speed = _rnd.uniform(0.5, 2.0)
+            self._matrix_drops.append({"x": x, "y": _rnd.randint(-60, 0),
+                                        "speed": speed, "char": ""})
+        self._animate_matrix()
+
+    def _animate_matrix(self):
+        """Animate matrix rain drops."""
+        import random as _rnd
+        if not hasattr(self, '_matrix_canvas'):
+            return
+        try:
+            self._matrix_canvas.delete("all")
+            glow = self.theme.get("glow", self.theme["accent"])
+            chars = "01アイウエオカキクケコサシスセソ"
+
+            for drop in self._matrix_drops:
+                drop["y"] += drop["speed"] * 3
+                drop["char"] = _rnd.choice(chars)
+                if drop["y"] > 60:
+                    drop["y"] = _rnd.randint(-20, -5)
+                    drop["x"] = _rnd.randint(5, 220)
+
+                # Trail effect (fading)
+                for j in range(4):
+                    ty = drop["y"] - j * 8
+                    if 0 <= ty <= 60:
+                        alpha_hex = max(20, 255 - j * 60)
+                        # Use progressively darker color for trail
+                        c = glow if j == 0 else self.theme.get("muted", "#333333")
+                        self._matrix_canvas.create_text(
+                            drop["x"], ty, text=drop["char"],
+                            fill=c, font=("Consolas", 6))
+
+            self.root.after(80, self._animate_matrix)
+        except Exception:
+            pass
+
+    # ─── NETWORK ACTIVITY PULSE ──────────────────────
+
+    def _start_network_pulse(self):
+        """Show a network activity pulse animation on right panel."""
+        self._net_canvas = tk.Canvas(self.right_panel, width=200, height=35,
+                                      bg=self.theme["bg2"], highlightthickness=0)
+        self._net_canvas.pack(padx=10, fill="x")
+        self._net_points = [0.0] * 40
+        self._pulse_net()
+
+    def _pulse_net(self):
+        """Animate network pulse line."""
+        import random as _rnd
+        try:
+            self._net_canvas.delete("all")
+            glow = self.theme.get("glow", self.theme["accent"])
+
+            # Shift left and add new point
+            self._net_points.pop(0)
+            if HAS_PSUTIL:
+                try:
+                    net = psutil.net_io_counters()
+                    val = (net.bytes_sent + net.bytes_recv) % 100
+                    self._net_points.append(val / 100.0 * 25 + _rnd.uniform(-2, 2))
+                except Exception:
+                    self._net_points.append(_rnd.uniform(5, 20))
+            else:
+                self._net_points.append(_rnd.uniform(5, 20))
+
+            # Draw the line
+            w = 200
+            step = w / len(self._net_points)
+            coords = []
+            for i, val in enumerate(self._net_points):
+                x = int(i * step)
+                y = 30 - max(2, min(28, val))
+                coords.extend([x, y])
+            if len(coords) >= 4:
+                self._net_canvas.create_line(coords, fill=self.theme["green"],
+                                              width=1, smooth=True)
+                # Glow line (thicker, slightly transparent)
+                self._net_canvas.create_line(coords, fill=self.theme.get("muted", "#333"),
+                                              width=2, smooth=True)
+
+            self.root.after(200, self._pulse_net)
+        except Exception:
+            pass
+
     # ─── RELOJ + MONITOR ─────────────────────────────
 
     def _tick(self):
@@ -1918,7 +2018,8 @@ class JarvisGodMode:
         ts = datetime.datetime.now().strftime("%H:%M")
         self.output.config(state="normal")
         self.output.insert("end", f"\n[{ts}] ", "muted")
-        self.output.insert("end", f"Tú: {text}\n", "user")
+        name = self.config.get("user_name", "User").upper()
+        self.output.insert("end", f"{name} ❯ {text}\n", "user")
         self.output.config(state="disabled")
 
     def _print_jarvis(self, text):
@@ -1987,9 +2088,20 @@ class JarvisGodMode:
 
     def _print_action(self, text):
         self.output.config(state="normal")
-        self.output.insert("end", f"  → {text}\n", "action")
+        self.output.insert("end", f"  ▸ {text}\n", "action")
         self.output.see("end")
         self.output.config(state="disabled")
+
+    def _animate_thinking(self, step=0):
+        """Animate a thinking indicator in the status bar."""
+        if not getattr(self, '_thinking', False):
+            return
+        frames = ["◆ ◇ ◇ ◇", "◇ ◆ ◇ ◇", "◇ ◇ ◆ ◇", "◇ ◇ ◇ ◆",
+                   "◇ ◇ ◆ ◇", "◇ ◆ ◇ ◇"]
+        glow = self.theme.get("glow", self.theme["accent"])
+        frame = frames[step % len(frames)]
+        self.status_lbl.config(text=f"  {frame} NEURAL PROCESSING...", fg=glow)
+        self.root.after(150, lambda: self._animate_thinking(step + 1))
 
     def _clear_output(self):
         self.output.config(state="normal")
@@ -2188,7 +2300,7 @@ class JarvisGodMode:
             if not notes:
                 self._print_jarvis("No tienes notas guardadas.")
             else:
-                lines = ["📝 TUS NOTAS:", "═" * 35]
+                lines = ["◈ TUS NOTAS:", "═" * 35]
                 for i, n in enumerate(notes[-15:], 1):
                     date = n.get("date", "")[:10]
                     lines.append(f"  {i}. [{date}] {n['text']}")
@@ -2201,9 +2313,9 @@ class JarvisGodMode:
             if not todos:
                 self._print_jarvis("No tienes tareas pendientes.")
             else:
-                lines = ["✅ TUS TAREAS:", "═" * 35]
+                lines = ["◈ TUS TAREAS:", "═" * 35]
                 for i, t in enumerate(todos, 1):
-                    status = "✅" if t.get("done") else "⬜"
+                    status = "[x]" if t.get("done") else "[ ]"
                     lines.append(f"  {i}. {status} {t['text']}")
                 self._print("\n".join(lines), "system")
             return
@@ -2236,10 +2348,16 @@ class JarvisGodMode:
             self._fallback_response(text)
             return
 
-        self.status_lbl.config(text="🧠 Procesando...", fg=C["accent"])
+        glow = C.get("glow", C["accent"])
+        self.status_lbl.config(text="  ◆ PROCESSING...", fg=glow)
+        self.term_status.config(text="THINKING", fg=C["yellow"])
         self.root.update()
         if self.config.get("sound_fx"):
             SoundFX.beep_ready()
+
+        # Show thinking indicator
+        self._thinking = True
+        self._animate_thinking()
 
         def process():
             context_parts = []
@@ -2256,6 +2374,7 @@ class JarvisGodMode:
             clean_text, action_results = self.executor.execute_all(response)
 
             def show():
+                self._thinking = False
                 if clean_text.strip():
                     self._print_jarvis(clean_text.strip())
                 for r in action_results:
@@ -2263,7 +2382,9 @@ class JarvisGodMode:
                         self._print_action(r)
                 if clean_text.strip():
                     self.voice.speak(clean_text.strip())
-                self.status_lbl.config(text="💡 Listo.", fg=self.theme["muted"])
+                glow = self.theme.get("glow", self.theme["accent"])
+                self.status_lbl.config(text="  ◆ READY", fg=glow)
+                self.term_status.config(text="ONLINE", fg=self.theme["green"])
                 if self.config.get("sound_fx"):
                     SoundFX.beep_done()
                 if self.continuous_listen and not self.voice.is_listening:
@@ -2323,12 +2444,12 @@ class JarvisGodMode:
         provider = self.config.get("provider", "gemini")
         pinfo = PROVIDERS.get(provider, PROVIDERS["gemini"])
         self._print_jarvis(
-            f"Cerebro sin conexión. Proveedor: {pinfo['name']}\n\n"
-            "🔧 SETUP RÁPIDO (GRATIS):\n\n"
+            f"◆ Neural link offline. Provider: {pinfo['name']}\n\n"
+            "◈ SETUP RAPIDO (GRATIS):\n\n"
             "  1. Google Gemini:\n"
             "     config proveedor: gemini\n"
             "     config api: TU_KEY → https://aistudio.google.com/apikey\n\n"
-            "  2. Groq (ultra rápido):\n"
+            "  2. Groq (ultra rapido):\n"
             "     config proveedor: groq\n"
             "     config api: TU_KEY → https://console.groq.com/keys\n\n"
             "  3. Ollama (local):\n"
@@ -2345,8 +2466,10 @@ class JarvisGodMode:
             self._print_jarvis("Mic no disponible. pip install SpeechRecognition pyaudio")
             return
 
-        self.status_lbl.config(text="🎤 Escuchando...", fg=self.theme["red"])
-        self._print("🎤 Escuchando...", "info")
+        glow = self.theme.get("glow", self.theme["accent"])
+        self.status_lbl.config(text="  ◆ LISTENING...", fg=self.theme["red"])
+        self.term_status.config(text="LISTENING", fg=self.theme["red"])
+        self._print("◉ Escuchando...", "info")
         self.root.update()
 
         def on_heard(text):
@@ -2355,7 +2478,9 @@ class JarvisGodMode:
         def on_error(msg):
             def show():
                 self._print(f"  {msg}", "muted")
-                self.status_lbl.config(text="💡 Listo.", fg=self.theme["muted"])
+                glow2 = self.theme.get("glow", self.theme["accent"])
+                self.status_lbl.config(text="  ◆ READY", fg=glow2)
+                self.term_status.config(text="ONLINE", fg=self.theme["green"])
                 if self.continuous_listen:
                     self.root.after(1000, self._voice_input)
                 elif self.wake_word_mode:
@@ -2588,7 +2713,7 @@ class JarvisGodMode:
         if not history:
             self._print_jarvis("El historial del portapapeles está vacío.")
             return
-        lines = ["📋 HISTORIAL DEL PORTAPAPELES:", "═" * 35]
+        lines = ["◈ CLIPBOARD HISTORY:", "═" * 35]
         for i, item in enumerate(history[-10:], 1):
             text = item["text"][:80]
             date = item.get("date", "")[:16]
@@ -2620,50 +2745,45 @@ class JarvisGodMode:
         api = self.config.get("api_key", "")
         masked = f"...{api[-6:]}" if len(api) > 10 else ("(no necesaria)" if provider == "ollama" else "(no configurada)")
         model = self.config.get("model", "") or pinfo.get("default_model", "auto")
-        voice = "Activada" if self.config.get("voice_enabled") else "Desactivada"
-        brain = "✅ Conectado" if self.brain.ready else "❌ Sin conexión"
+        voice = "ON" if self.config.get("voice_enabled") else "OFF"
+        brain = "ONLINE" if self.brain.ready else "OFFLINE"
         theme_name = THEMES.get(self.config.get("theme", "jarvis"), {}).get("name", "?")
-        tts = "Edge TTS" if HAS_EDGE_TTS else "pyttsx3" if HAS_PYTTSX3 else "Sin voz"
+        tts = "Edge TTS" if HAS_EDGE_TTS else "pyttsx3" if HAS_PYTTSX3 else "None"
         voice_name = self.config.get("edge_voice", DEFAULT_EDGE_VOICE)
 
         self._print(f"""
-⚙️ CONFIGURACIÓN J.A.R.V.I.S. GOD MODE v{VERSION}
-═══════════════════════════════════════
-  Proveedor:  {pinfo.get('name', provider)} ({pinfo.get('cost', '?')})
-  Estado:     {brain}
-  API Key:    {masked}
-  Modelo:     {model}
-  Motor voz:  {tts}
-  Voz:        {voice_name}
-  Respuesta:  {voice}
-  Tema:       {theme_name}
-  Typewriter: {"Sí" if self.config.get("typewriter") else "No"}
-  Wake Word:  {"Activo" if self.config.get("wake_word") else "Inactivo"}
-  Datos:      {DATA_DIR}
-
-  CONFIGURAR:
-  • config proveedor: gemini/groq/ollama/openai
-  • config api: TU_API_KEY
-  • config modelo: nombre_modelo
-  • config nombre: tu_nombre
-  • config voz: {", ".join(EDGE_VOICES.keys())}
-  • config tema: {", ".join(THEMES.keys())}
-  • typewriter    (toggle efecto escritura)
-  • proveedores   (ver proveedores)
-  • exportar      (guardar chat)
-  • clipboard     (historial portapapeles)
-  • pomodoro [min] (timer productividad)
-  • schedule ver  (tareas programadas)
-═══════════════════════════════════════
+ ╔══════════════════════════════════════════════╗
+ ║  ◆ J.A.R.V.I.S. CONFIG — v{VERSION}             ║
+ ╠══════════════════════════════════════════════╣
+ ║  Provider:   {pinfo.get('name', provider):>20} ({pinfo.get('cost', '?')})
+ ║  Status:     {brain:>20}
+ ║  API Key:    {masked:>20}
+ ║  Model:      {model:>20}
+ ║  TTS Engine: {tts:>20}
+ ║  Voice:      {voice_name:>20}
+ ║  Response:   {voice:>20}
+ ║  Theme:      {theme_name:>20}
+ ║  Typewriter: {"ON" if self.config.get("typewriter") else "OFF":>20}
+ ║  Wake Word:  {"ON" if self.config.get("wake_word") else "OFF":>20}
+ ║  Data Dir:   ~/.jarvis_god/
+ ╠══════════════════════════════════════════════╣
+ ║  COMMANDS:                                   ║
+ ║  config proveedor: gemini/groq/ollama/openai ║
+ ║  config api: TU_API_KEY                      ║
+ ║  config modelo: nombre_modelo                ║
+ ║  config nombre: tu_nombre                    ║
+ ║  config voz: {", ".join(list(EDGE_VOICES.keys())[:4])}
+ ║  config tema: {", ".join(list(THEMES.keys())[:6])}
+ ╚══════════════════════════════════════════════╝
 """, "system")
 
     def _show_providers(self):
-        lines = ["\n🤖 PROVEEDORES DE IA", "═" * 40]
+        lines = ["\n◈ AI PROVIDERS", "═" * 40]
         current = self.config.get("provider", "gemini")
         for key, p in PROVIDERS.items():
-            marker = " ◀ ACTIVO" if key == current else ""
+            marker = " ◀ ACTIVE" if key == current else ""
             lines.append(f"\n  {p['name']} [{key}] - {p['cost']}{marker}")
-            lines.append(f"    Modelos: {', '.join(p['models'])}")
+            lines.append(f"    Models: {', '.join(p['models'])}")
             if key == "ollama":
                 lines.append(f"    Setup: {p['get_key_url']}")
             else:
@@ -2777,47 +2897,46 @@ class JarvisGodMode:
 
     def _show_help(self):
         self._print(f"""
-❓ COMANDOS DE J.A.R.V.I.S. GOD MODE v{VERSION}
-═══════════════════════════════════════════════
-  CHAT IA (escribe cualquier cosa en español):
-    "abre chrome"  "busca en google X"  "clima en Madrid"
-    "traduce hola al inglés"  "noticias de hoy"
-    "guarda una nota: comprar leche"
-    "recuérdame X en 5 minutos"
-    "dame una contraseña de 20 caracteres"
-
-  COMANDOS LOCALES (no gastan API):
-    notas / tareas      — ver guardados
-    tarea done 1        — marcar tarea completada
-    uptime              — tiempo activo
-    pomodoro [min]      — timer productividad
-    pomodoro stop       — parar timer
-    schedule ver        — tareas programadas
-    clipboard           — historial portapapeles
-    exportar            — guardar chat a archivo
-    proveedores         — ver proveedores de IA
-    limpiar / cls       — limpiar pantalla
-
-  CONFIGURACIÓN:
-    config proveedor: gemini / groq / ollama / openai
-    config api: TU_KEY
-    config modelo: nombre
-    config nombre: tu_nombre
-    config voz: jorge / dalia / elena / alvaro
-    config tema: jarvis / ironman / matrix / friday
-    typewriter          — toggle efecto escritura
-
-  ATAJOS:
-    Enter     — enviar
-    ↑/↓       — historial
-    Ctrl+L    — limpiar
-    Ctrl+E    — exportar chat
-    Escape    — focus input
-
-  BOTONES SIDEBAR:
-    🎤 Modo Voz  — escucha continua
-    👂 Wake Word — di "Jarvis" para activar
-═══════════════════════════════════════════════
+ ╔══════════════════════════════════════════════════╗
+ ║  ◆ J.A.R.V.I.S. COMMAND REFERENCE v{VERSION}        ║
+ ╠══════════════════════════════════════════════════╣
+ ║  AI CHAT (natural language):                     ║
+ ║    "abre chrome"  "busca X"  "clima en Madrid"   ║
+ ║    "traduce X al ingles"  "noticias de hoy"      ║
+ ║    "guarda nota: texto"  "dame password de 20"   ║
+ ║    "recuerdame X en 5 minutos"                   ║
+ ╠══════════════════════════════════════════════════╣
+ ║  LOCAL COMMANDS (no API cost):                   ║
+ ║    notas / tareas     — view saved items         ║
+ ║    tarea done 1       — mark task complete       ║
+ ║    uptime             — session time             ║
+ ║    pomodoro [min]     — productivity timer       ║
+ ║    pomodoro stop      — stop timer               ║
+ ║    schedule ver       — scheduled tasks          ║
+ ║    clipboard          — clipboard history        ║
+ ║    exportar           — save chat to file        ║
+ ║    proveedores        — view AI providers        ║
+ ║    limpiar / cls      — clear screen             ║
+ ╠══════════════════════════════════════════════════╣
+ ║  CONFIGURATION:                                  ║
+ ║    config proveedor: gemini/groq/ollama/openai   ║
+ ║    config api: YOUR_KEY                          ║
+ ║    config modelo: model_name                     ║
+ ║    config nombre: your_name                      ║
+ ║    config voz: jorge/dalia/elena/alvaro          ║
+ ║    config tema: {"/".join(list(THEMES.keys())[:5])}
+ ║    typewriter         — toggle typing effect     ║
+ ╠══════════════════════════════════════════════════╣
+ ║  SHORTCUTS:                                      ║
+ ║    Enter   — send     |  Up/Down — history       ║
+ ║    Ctrl+L  — clear    |  Ctrl+E  — export        ║
+ ║    Escape  — focus    |                          ║
+ ╠══════════════════════════════════════════════════╣
+ ║  SIDEBAR:                                        ║
+ ║    VOZ     — continuous listening mode            ║
+ ║    WAKE    — say "Jarvis" to activate            ║
+ ║    MUTE    — toggle voice responses              ║
+ ╚══════════════════════════════════════════════════╝
 """, "system")
 
     # ─── CERRAR ──────────────────────────────────────
