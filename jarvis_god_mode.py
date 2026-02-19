@@ -112,6 +112,13 @@ try:
 except ImportError:
     pass
 
+HAS_CV2 = False
+try:
+    import cv2
+    HAS_CV2 = True
+except ImportError:
+    pass
+
 
 # ══════════════════════════════════════════════════════════════
 # TEMAS VISUALES
@@ -213,6 +220,28 @@ PROVIDERS = {
         "get_key_url": "https://platform.openai.com/api-keys",
         "needs_openai_lib": True,
     },
+    "openrouter": {
+        "name": "OpenRouter (Free Models)",
+        "cost": "GRATIS",
+        "models": [
+            "google/gemini-2.0-flash-exp:free",
+            "meta-llama/llama-3.3-70b-instruct:free",
+            "qwen/qwen-2.5-72b-instruct:free",
+            "deepseek/deepseek-chat-v3-0324:free",
+            "mistralai/mistral-small-3.1-24b-instruct:free",
+        ],
+        "default_model": "google/gemini-2.0-flash-exp:free",
+        "get_key_url": "https://openrouter.ai/keys",
+        "needs_openai_lib": True,
+    },
+    "cerebras": {
+        "name": "Cerebras (Ultra Fast)",
+        "cost": "GRATIS",
+        "models": ["llama-3.3-70b", "llama3.1-8b"],
+        "default_model": "llama-3.3-70b",
+        "get_key_url": "https://cloud.cerebras.ai/",
+        "needs_openai_lib": True,
+    },
 }
 
 # ══════════════════════════════════════════════════════════════
@@ -220,7 +249,7 @@ PROVIDERS = {
 # ══════════════════════════════════════════════════════════════
 
 APP_NAME = "J.A.R.V.I.S. GOD MODE"
-VERSION = "6.3.0"
+VERSION = "6.4.0"
 START_TIME = time.time()
 DATA_DIR = os.path.join(os.path.expanduser("~"), ".jarvis_god")
 NOTES_FILE = os.path.join(DATA_DIR, "notas.json")
@@ -624,6 +653,24 @@ class AIBrain:
                 return True
             except Exception:
                 return False
+        elif self.provider == "openrouter":
+            if not HAS_OPENAI:
+                return False
+            try:
+                self.client = OpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1")
+                self.ready = True
+                return True
+            except Exception:
+                return False
+        elif self.provider == "cerebras":
+            if not HAS_OPENAI:
+                return False
+            try:
+                self.client = OpenAI(api_key=api_key, base_url="https://api.cerebras.ai/v1")
+                self.ready = True
+                return True
+            except Exception:
+                return False
         elif self.provider == "ollama":
             if HAS_OPENAI:
                 try:
@@ -706,6 +753,8 @@ class AIBrain:
                 msg = json.loads(body).get("error", {}).get("message", body[:200])
             except Exception:
                 msg = body[:200]
+            if e.code == 429 or "rate" in str(msg).lower():
+                return f"[RATE_LIMIT]Error Gemini ({e.code}): {msg}"
             return f"Error Gemini ({e.code}): {msg}"
         except Exception as e:
             return f"Error Gemini: {e}"
@@ -727,6 +776,10 @@ class AIBrain:
             self._save_turn(user_message, answer)
             return answer
         except Exception as e:
+            error_str = str(e)
+            # Detect rate limit errors (429)
+            if "429" in error_str or "rate_limit" in error_str or "Rate limit" in error_str:
+                return f"[RATE_LIMIT]{error_str}"
             return f"Error {PROVIDERS.get(self.provider, {}).get('name', self.provider)}: {e}"
 
     def _think_ollama_rest(self, user_message, system_prompt, model=None):
@@ -762,6 +815,44 @@ class AIBrain:
     def clear_memory(self):
         self.conversation = []
         DataStore.save(CONVERSATION_FILE, [])
+
+    def think_with_image(self, user_message, image_base64, system_context=""):
+        """Send text + image to Gemini Vision API for visual analysis."""
+        # Only works with Gemini (has free vision) or can fallback
+        api_key = self.api_key
+        if self.provider != "gemini":
+            # Try using gemini key if available
+            config = DataStore.load(CONFIG_FILE, {})
+            api_key = config.get("api_key_gemini", "") or config.get("api_key", "")
+            if not api_key:
+                return "Para usar la cámara necesito una API key de Gemini (gratis).\nConfig: config api_gemini: TU_KEY\nURL: https://aistudio.google.com/apikey"
+
+        model = "gemini-2.0-flash"
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta/"
+            f"models/{model}:generateContent?key={api_key}"
+        )
+        system_prompt = self._build_system_prompt(system_context)
+
+        payload = {
+            "contents": [{
+                "parts": [
+                    {"text": f"{system_prompt}\n\nEl usuario te muestra una imagen desde su cámara. {user_message}"},
+                    {"inlineData": {"mimeType": "image/jpeg", "data": image_base64}}
+                ]
+            }],
+            "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1500},
+        }
+        try:
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(url, data=data,
+                                         headers={"Content-Type": "application/json"}, method="POST")
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+            answer = result["candidates"][0]["content"]["parts"][0]["text"]
+            return answer
+        except Exception as e:
+            return f"Error de visión: {e}"
 
 
 # ══════════════════════════════════════════════════════════════
@@ -2708,7 +2799,7 @@ class JarvisGodMode:
                 self._print("  ℹ️ Ollama no necesita API key. Solo asegúrate de tenerlo corriendo.", "muted")
                 self.brain.init_provider("ollama", "")
             else:
-                api_key = self.config.get("api_key", "")
+                api_key = self.config.get(f"api_key_{prov}", "") or self.config.get("api_key", "")
                 if api_key:
                     self.brain.init_provider(prov, api_key)
                 else:
@@ -2731,6 +2822,21 @@ class JarvisGodMode:
                     self._print_jarvis(f"{provider} necesita: pip install openai")
                 else:
                     self._print_jarvis("Error conectando. Verifica tu API key.")
+            return
+
+        # Provider-specific API keys (config api_openrouter: KEY, config api_cerebras: KEY)
+        api_prov_match = re.match(r'config api[_\s](openrouter|cerebras|groq|gemini):', comando)
+        if api_prov_match:
+            prov = api_prov_match.group(1)
+            key = text.split(":", 1)[1].strip()
+            self.config[f"api_key_{prov}"] = key
+            DataStore.save(CONFIG_FILE, self.config)
+            self._print_jarvis(f"API Key guardada para {PROVIDERS.get(prov, {}).get('name', prov)}.")
+            return
+
+        # Show all models
+        if comando in ("modelos", "models", "model list"):
+            self._show_model_switcher()
             return
 
         # Modelo
@@ -3822,6 +3928,39 @@ $steps = [math]::Round({level} / 2)
             self._print("\n".join(lines), "system")
             return
 
+        # ══════════════════════════════════════════════
+        # CAMERA / VISION (Gemini Vision API)
+        # ══════════════════════════════════════════════
+
+        if comando in ("camara", "camera", "cam", "foto", "photo"):
+            self._camera_capture("Describe detalladamente lo que ves en esta imagen. Responde en español.")
+            return
+
+        if comando.startswith("camara ") or comando.startswith("camera "):
+            prompt = re.sub(r'^(camara|camera)\s+', '', text, flags=re.IGNORECASE).strip()
+            self._camera_capture(prompt)
+            return
+
+        if comando in ("leer", "leer texto", "ocr", "read"):
+            self._camera_capture("Lee TODO el texto que aparece en esta imagen. Transcríbelo exactamente como está.")
+            return
+
+        if comando in ("resolver", "solve", "math cam", "resolver math"):
+            self._camera_capture("Resuelve el problema matemático o ejercicio que aparece en esta imagen. Muestra el procedimiento completo paso a paso.")
+            return
+
+        if comando in ("codigo", "code cam", "analizar codigo"):
+            self._camera_capture("Analiza el código de programación que aparece en la imagen. Explica qué hace, si tiene errores y cómo mejorarlo.")
+            return
+
+        if comando in ("traducir cam", "translate cam"):
+            self._camera_capture("Traduce todo el texto que aparece en esta imagen al español. Si ya está en español, tradúcelo al inglés.")
+            return
+
+        if comando in ("que es esto", "what is this", "identificar"):
+            self._camera_capture("¿Qué es este objeto/cosa que se ve en la imagen? Dame información detallada sobre ello.")
+            return
+
         if not self.brain.ready:
             self._fallback_response(text)
             return
@@ -3849,6 +3988,13 @@ $steps = [math]::Round({level} / 2)
 
             model = self.config.get("model", "") or None
             response = self.brain.think(text, system_context=context, model=model)
+
+            # ── Rate limit detection & auto-fallback ──
+            if response.startswith("[RATE_LIMIT]"):
+                error_msg = response[12:]  # Remove prefix
+                self.root.after(0, lambda: self._handle_rate_limit(error_msg, text))
+                return
+
             clean_text, action_results = self.executor.execute_all(response)
 
             def show():
@@ -3871,6 +4017,110 @@ $steps = [math]::Round({level} / 2)
             self.root.after(0, show)
 
         threading.Thread(target=process, daemon=True).start()
+
+    # ─── RATE LIMIT HANDLER ─────────────────────────
+
+    def _handle_rate_limit(self, error_msg, original_text):
+        """Handle rate limit by showing error and model switcher buttons."""
+        self._thinking = False
+        C = self.theme
+        glow = C.get("glow", C["accent"])
+        self.status_lbl.config(text="  ◆ RATE LIMITED", fg=C["red"])
+        self.term_status.config(text="LIMITED", fg=C["red"])
+        SoundFX.beep_error()
+
+        self._print(f"◈ ⚠️ TOKENS AGOTADOS\n{'═' * 40}\n  {error_msg[:200]}", "error")
+        self._print("\n◈ Puedes cambiar a otro proveedor GRATIS:", "system")
+
+        # Create button frame in terminal
+        btn_frame = tk.Frame(self.output_text, bg=C["bg"])
+
+        current_provider = self.config.get("provider", "")
+        free_providers = [
+            ("🟢 Gemini Flash", "gemini", "gemini-2.0-flash", "Tokens generosos, muy rápido"),
+            ("🟢 OpenRouter", "openrouter", "google/gemini-2.0-flash-exp:free", "Modelos gratis ilimitados"),
+            ("🟢 Cerebras", "cerebras", "llama-3.3-70b", "Ultra rápido, gratis"),
+            ("🟢 Groq", "groq", "llama-3.3-70b-versatile", "Rápido, 100K tokens/día"),
+        ]
+
+        for label, provider, model, desc in free_providers:
+            if provider == current_provider:
+                continue  # Skip current (rate-limited) provider
+            btn = tk.Button(
+                btn_frame, text=f"  {label}: {desc}  ",
+                font=("Consolas", 10, "bold"),
+                bg=C["bg3"], fg=C["accent"], activebackground=C["accent"], activeforeground=C["bg"],
+                relief="flat", bd=1, padx=10, pady=4, cursor="hand2",
+                command=lambda p=provider, m=model, t=original_text: self._switch_provider_and_retry(p, m, t)
+            )
+            btn.pack(side="left", padx=4, pady=4)
+
+        # "All Models" button
+        btn_all = tk.Button(
+            btn_frame, text="  📋 Ver Todos los Modelos  ",
+            font=("Consolas", 10, "bold"),
+            bg=C["bg3"], fg=C["yellow"], activebackground=C["yellow"], activeforeground=C["bg"],
+            relief="flat", bd=1, padx=10, pady=4, cursor="hand2",
+            command=self._show_model_switcher
+        )
+        btn_all.pack(side="left", padx=4, pady=4)
+
+        self.output_text.window_create("end", window=btn_frame)
+        self.output_text.insert("end", "\n\n")
+        self.output_text.see("end")
+
+    def _switch_provider_and_retry(self, provider, model, original_text):
+        """Switch to a different provider and retry the original message."""
+        C = self.theme
+        pinfo = PROVIDERS.get(provider, {})
+
+        # Try provider-specific key first, then main key
+        api_key = self.config.get(f"api_key_{provider}", "") or self.config.get("api_key", "")
+
+        # Gemini can use main key if provider was gemini before
+        if provider == "gemini":
+            api_key = self.config.get("api_key_gemini", "") or self.config.get("api_key", "")
+
+        # Provider needs a key and we don't have one
+        if provider not in ("ollama",) and not api_key:
+            key_url = pinfo.get("get_key_url", "")
+            self._print(f"◈ Para usar {pinfo['name']}, necesitas una API key gratuita:", "system")
+            self._print(f"  1. Ve a: {key_url}", "system")
+            self._print(f"  2. Crea tu cuenta y copia la API key", "system")
+            self._print(f"  3. Escribe: config api_{provider}: TU_KEY", "system")
+            return
+
+        self._print(f"◈ Cambiando a {pinfo.get('name', provider)}...", "muted")
+        self.root.update()
+
+        if self.brain.init_provider(provider, api_key):
+            self.config["provider"] = provider
+            self.config["model"] = model
+            DataStore.save(CONFIG_FILE, self.config)
+            self._print(f"◈ ✅ Ahora usando: {pinfo.get('name', provider)} ({model})", "system")
+            self._print(f"◈ Reintentando tu mensaje...\n", "muted")
+            # Retry the original message
+            self.root.after(500, lambda: self._process_input(original_text))
+        else:
+            self._print(f"◈ ❌ No se pudo conectar a {provider}.", "error")
+
+    def _show_model_switcher(self):
+        """Show all available models from all providers."""
+        C = self.theme
+        lines = ["◈ MODELOS DISPONIBLES", "═" * 50]
+        for prov_key, pinfo in PROVIDERS.items():
+            cost_emoji = "🟢" if "GRATIS" in pinfo.get("cost", "") else "🔴"
+            lines.append(f"\n  {cost_emoji} {pinfo['name']} ({pinfo['cost']})")
+            lines.append(f"     Key URL: {pinfo.get('get_key_url', 'N/A')}")
+            for m in pinfo.get("models", []):
+                default = " ⭐" if m == pinfo.get("default_model") else ""
+                lines.append(f"     • {m}{default}")
+        lines.append(f"\n{'═' * 50}")
+        lines.append("  Cambiar: config proveedor: NOMBRE")
+        lines.append("  API Key: config api: TU_KEY")
+        lines.append("  Modelo:  config modelo: NOMBRE")
+        lines.append(f"  Key extra: config api_openrouter: KEY")
+        self._print("\n".join(lines), "system")
 
     # ─── FALLBACK (sin IA) ──────────────────────────
 
@@ -4329,7 +4579,7 @@ $steps = [math]::Round({level} / 2)
         # Boot sequence lines
         boot_lines = [
             "[CORE] Initializing quantum neural processing units...",
-            "[CORE] Loading AI inference engine v6.3...",
+            "[CORE] Loading AI inference engine v6.4...",
             "[VOICE] Calibrating Edge TTS speech synthesis...",
             "[NET] Establishing secure AI provider link...",
             "[SYS] Scanning hardware: CPU, RAM, GPU, Storage...",
@@ -4342,6 +4592,8 @@ $steps = [math]::Round({level} / 2)
             "[FIN] Loading crypto, currency & finance modules...",
             "[HAB] Initializing habit tracker & flashcard engine...",
             "[NET] Port scanner & speed test ready...",
+            "[CAM] Initializing computer vision module...",
+            "[AI] Multi-provider fallback system ready...",
             "[RDY] All subsystems nominal. Awaiting commands...",
         ]
 
@@ -4440,9 +4692,11 @@ $steps = [math]::Round({level} / 2)
  ║  ◆ J.A.R.V.I.S. COMMAND REFERENCE v{VERSION}        ║
  ╠══════════════════════════════════════════════════╣
  ║  AI CHAT (natural language):                     ║
- ║    "abre chrome"  "busca X"  "clima en Madrid"   ║
- ║    "traduce X al ingles"  "noticias de hoy"      ║
- ║    "guarda nota: texto"  "dame password de 20"   ║
+ ║    "abre chrome"  "busca X"  "climpenrouter...   ║
+ ║    config api: YOUR_KEY                          ║
+ ║    config api_openrouter: KEY                    ║
+ ║    config modelo: model_name                     ║
+ ║    modelos            — see all modelsd de 20"   ║
  ║    "recuerdame X en 5 minutos"                   ║
  ╠══════════════════════════════════════════════════╣
  ║  LOCAL COMMANDS (no API cost):                   ║
