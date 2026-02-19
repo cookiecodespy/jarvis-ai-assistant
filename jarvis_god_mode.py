@@ -9,7 +9,7 @@
 ║   ✦ Edge TTS — Voces ultra realistas (casi humanas)                  ║
 ║   ✦ Wake Word — Di "Jarvis" para activar sin tocar nada             ║
 ║   ✦ Typewriter — Texto aparece letra por letra                       ║
-║   ✦ Clima en tiempo real (wttr.in, gratis)                           ║
+║   ✦ Clima en tiempo real (Open-Meteo, gratis)                        ║
 ║   ✦ Traductor integrado (MyMemory API, gratis)                      ║
 ║   ✦ Noticias en vivo (RSS, gratis)                                   ║
 ║   ✦ Efectos de sonido (Windows)                                      ║
@@ -220,7 +220,7 @@ PROVIDERS = {
 # ══════════════════════════════════════════════════════════════
 
 APP_NAME = "J.A.R.V.I.S. GOD MODE"
-VERSION = "6.1.0"
+VERSION = "6.2.0"
 START_TIME = time.time()
 DATA_DIR = os.path.join(os.path.expanduser("~"), ".jarvis_god")
 NOTES_FILE = os.path.join(DATA_DIR, "notas.json")
@@ -1048,23 +1048,79 @@ class ActionExecutor:
     # ─── CLIMA (wttr.in - GRATIS) ────────────────────
 
     def _get_weather(self, city):
-        """Obtener clima de cualquier ciudad (gratis, sin API key)."""
+        """Obtener clima usando Open-Meteo (gratis, confiable, sin API key)."""
         try:
-            city_encoded = urllib.parse.quote(city.strip())
-            url = f"https://wttr.in/{city_encoded}?format=%l:+%c+%t+%h+%w+%p&lang=es"
-            req = urllib.request.Request(url, headers={"User-Agent": "Jarvis/5.0"})
+            city_clean = city.strip()
+            # Step 1: Geocode the city name
+            geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={urllib.parse.quote(city_clean)}&count=1&language=es"
+            req = urllib.request.Request(geo_url, headers={"User-Agent": "Jarvis/6.1"})
             with urllib.request.urlopen(req, timeout=10) as resp:
-                weather = resp.read().decode("utf-8", errors="replace").strip()
+                geo = json.loads(resp.read().decode("utf-8"))
 
-            # También obtener pronóstico corto
-            url2 = f"https://wttr.in/{city_encoded}?format=%l:+%c+%t+|+Sensacion:+%f+|+Humedad:+%h+|+Viento:+%w&lang=es"
-            req2 = urllib.request.Request(url2, headers={"User-Agent": "Jarvis/5.0"})
+            if "results" not in geo or not geo["results"]:
+                return f"◈ No encontré la ciudad '{city_clean}'. Intenta con otro nombre."
+
+            loc = geo["results"][0]
+            lat, lon = loc["latitude"], loc["longitude"]
+            name = loc.get("name", city_clean)
+            country = loc.get("country", "")
+
+            # Step 2: Get current weather
+            wx_url = (
+                f"https://api.open-meteo.com/v1/forecast?"
+                f"latitude={lat}&longitude={lon}"
+                f"&current=temperature_2m,relative_humidity_2m,apparent_temperature,"
+                f"wind_speed_10m,weather_code,precipitation"
+                f"&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset"
+                f"&timezone=auto&forecast_days=1"
+            )
+            req2 = urllib.request.Request(wx_url, headers={"User-Agent": "Jarvis/6.1"})
             with urllib.request.urlopen(req2, timeout=10) as resp2:
-                detailed = resp2.read().decode("utf-8", errors="replace").strip()
+                wx = json.loads(resp2.read().decode("utf-8"))
 
-            return f"◈ CLIMA: {detailed}"
+            cur = wx["current"]
+            daily = wx.get("daily", {})
+
+            # Weather codes to descriptions and icons
+            wx_info = {
+                0: ("Despejado", "☀️"), 1: ("Mayormente despejado", "🌤️"),
+                2: ("Parcialmente nublado", "⛅"), 3: ("Nublado", "☁️"),
+                45: ("Neblina", "🌫️"), 48: ("Escarcha", "🌫️"),
+                51: ("Llovizna leve", "🌦️"), 53: ("Llovizna", "🌦️"), 55: ("Llovizna fuerte", "🌧️"),
+                61: ("Lluvia leve", "🌧️"), 63: ("Lluvia", "🌧️"), 65: ("Lluvia fuerte", "🌧️"),
+                71: ("Nieve leve", "🌨️"), 73: ("Nieve", "❄️"), 75: ("Nieve fuerte", "❄️"),
+                80: ("Chubascos", "🌦️"), 81: ("Chubascos fuertes", "🌧️"), 82: ("Tormentas", "⛈️"),
+                95: ("Tormenta eléctrica", "⛈️"), 96: ("Tormenta con granizo", "⛈️"),
+                99: ("Tormenta fuerte", "⛈️"),
+            }
+            code = cur.get("weather_code", 0)
+            desc, icon = wx_info.get(code, (f"Código {code}", "🌡️"))
+
+            temp = cur.get("temperature_2m", "?")
+            feels = cur.get("apparent_temperature", "?")
+            humidity = cur.get("relative_humidity_2m", "?")
+            wind = cur.get("wind_speed_10m", "?")
+            precip = cur.get("precipitation", 0)
+
+            t_max = daily.get("temperature_2m_max", ["?"])[0]
+            t_min = daily.get("temperature_2m_min", ["?"])[0]
+            sunrise = daily.get("sunrise", [""])[0].split("T")[-1] if daily.get("sunrise") else "?"
+            sunset = daily.get("sunset", [""])[0].split("T")[-1] if daily.get("sunset") else "?"
+
+            result = (
+                f"◈ CLIMA — {name}, {country}\n"
+                f"{'═' * 35}\n"
+                f"  {icon} {desc}\n"
+                f"  🌡️ Temperatura: {temp}°C (Sensación: {feels}°C)\n"
+                f"  💧 Humedad: {humidity}%\n"
+                f"  💨 Viento: {wind} km/h\n"
+                f"  🌧️ Precipitación: {precip} mm\n"
+                f"  📊 Máx: {t_max}°C | Mín: {t_min}°C\n"
+                f"  🌅 Amanecer: {sunrise} | 🌇 Atardecer: {sunset}"
+            )
+            return result
         except Exception as e:
-            return f"◈ No pude obtener el clima: {str(e).encode('ascii', errors='replace').decode()}"
+            return f"◈ No pude obtener el clima: {e}"
 
     # ─── TRADUCTOR (MyMemory API - GRATIS) ───────────
 
@@ -1793,8 +1849,9 @@ class JarvisGodMode:
         r_btns = [
             ("▸ BRIEFING", lambda: self._quick_cmd("briefing")),
             ("▸ SISTEMA", lambda: self._quick_cmd("info del sistema")),
-            ("▸ CLIMA", lambda: self._quick_cmd("clima de mi ciudad")),
+            ("▸ CLIMA", lambda: self._quick_cmd("clima Santiago Chile")),
             ("▸ NOTICIAS", lambda: self._quick_cmd("noticias de hoy")),
+            ("▸ YOUTUBE", lambda: self._quick_cmd("yt musica lofi")),
             ("▸ PROCESOS", lambda: self._quick_cmd("procesos")),
             ("▸ WIKI", lambda: self._quick_cmd("wiki Python")),
             ("▸ DRIVE", lambda: self._quick_cmd("drive")),
@@ -3266,7 +3323,9 @@ class JarvisGodMode:
             return
 
         if "clima" in comando or "weather" in comando:
-            city = comando.replace("clima", "").replace("weather", "").replace("en", "").strip() or "Madrid"
+            city = comando.replace("clima", "").replace("weather", "").replace("en", "").replace("de", "").strip() or "Santiago Chile"
+            self._print("◈ Consultando clima...", "muted")
+            self.root.update()
             def get_w():
                 r = self.executor._get_weather(city)
                 self.root.after(0, lambda: self._print_jarvis(r))
@@ -3690,15 +3749,18 @@ class JarvisGodMode:
 
         # Boot sequence lines
         boot_lines = [
-            "[CORE] Initializing neural processing units...",
-            "[CORE] Loading AI inference modules...",
-            "[VOICE] Calibrating speech synthesis engine...",
-            "[NET] Verifying AI provider connections...",
-            "[SYS] Scanning hardware subsystems...",
-            "[SEC] Activating security protocols...",
-            "[AI] Running self-diagnostics...",
-            "[VFX] Enabling visual effects engine...",
-            "[HEX] Loading interface grid overlay...",
+            "[CORE] Initializing quantum neural processing units...",
+            "[CORE] Loading AI inference engine v6.2...",
+            "[VOICE] Calibrating Edge TTS speech synthesis...",
+            "[NET] Establishing secure AI provider link...",
+            "[SYS] Scanning hardware: CPU, RAM, GPU, Storage...",
+            "[SEC] Activating encryption & security protocols...",
+            "[AI] Running neural network self-diagnostics...",
+            "[VFX] Enabling EDEX-UI visual effects engine...",
+            "[HEX] Loading holographic grid overlay...",
+            "[WEB] Connecting YouTube, Google, Wikipedia APIs...",
+            "[WX] Initializing Open-Meteo weather service...",
+            "[RDY] All subsystems nominal. Awaiting commands...",
         ]
 
         # EDEX-UI style banner
@@ -3819,6 +3881,7 @@ class JarvisGodMode:
  ║    calc EXPR          — calculator (sin,cos,pi)  ║
  ║    convertir X a Y    — unit converter           ║
  ║    dias hasta DD/MM   — date calculator          ║
+ ║    clima CITY         — weather (Open-Meteo)     ║
  ║    briefing           — daily briefing report    ║
  ║    procesos           — top system processes     ║
  ║    password N         — generate strong password ║
@@ -3830,6 +3893,11 @@ class JarvisGodMode:
  ║    typing             — speed typing test        ║
  ║    contar TEXT        — word counter              ║
  ║    ip                 — show public IP            ║
+ ╠══════════════════════════════════════════════════╣
+ ║  YOUTUBE & WEB (directo, sin IA):                ║
+ ║    yt QUERY           — open first YouTube video ║
+ ║    youtube QUERY      — same as yt               ║
+ ║    google QUERY       — Google search            ║
  ╠══════════════════════════════════════════════════╣
  ║  UNIVERSITY & QUICK ACCESS:                      ║
  ║    wiki TOPIC         — Wikipedia summary        ║
