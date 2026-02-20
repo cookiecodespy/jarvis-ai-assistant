@@ -2835,8 +2835,24 @@ class JarvisGodMode:
             return
 
         # Show all models
-        if comando in ("modelos", "models", "model list"):
+        if comando in ("modelos", "models", "model list", "cambiar proveedor", "cambiar modelo", "switch provider", "proveedores"):
             self._show_model_switcher()
+            return
+
+        # Quick switch: "cambiar a gemini", "cambiar a openrouter", etc.
+        cambiar_match = re.match(r'cambiar a (\w+)', comando)
+        if cambiar_match:
+            target = cambiar_match.group(1).lower()
+            if target in PROVIDERS:
+                pinfo = PROVIDERS[target]
+                model = pinfo["default_model"]
+                api_key = self.config.get(f"api_key_{target}", "") or self.config.get("api_key", "")
+                if target == "gemini":
+                    api_key = self.config.get("api_key_gemini", "") or self.config.get("api_key", "")
+                original = getattr(self, '_last_rate_limit_text', '')
+                self._switch_provider_and_retry(target, model, original)
+            else:
+                self._print(f"Proveedor '{target}' no encontrado. Escribe 'modelos' para ver opciones.", "error")
             return
 
         # Modelo
@@ -4097,6 +4113,7 @@ $steps = [math]::Round({level} / 2)
     def _handle_rate_limit(self, error_msg, original_text):
         """Handle rate limit by showing error and model switcher buttons."""
         self._thinking = False
+        self._last_rate_limit_text = original_text
         C = self.theme
         glow = C.get("glow", C["accent"])
         self.status_lbl.config(text="  ◆ RATE LIMITED", fg=C["red"])
@@ -4106,41 +4123,49 @@ $steps = [math]::Round({level} / 2)
         self._print(f"◈ ⚠️ TOKENS AGOTADOS\n{'═' * 40}\n  {error_msg[:200]}", "error")
         self._print("\n◈ Puedes cambiar a otro proveedor GRATIS:", "system")
 
-        # Create button frame in terminal
-        btn_frame = tk.Frame(self.output_text, bg=C["bg"])
-
         current_provider = self.config.get("provider", "")
         free_providers = [
-            ("🟢 Gemini Flash", "gemini", "gemini-2.0-flash", "Tokens generosos, muy rápido"),
+            ("🟢 Gemini Flash", "gemini", "gemini-2.0-flash", "Tokens generosos"),
             ("🟢 OpenRouter", "openrouter", "google/gemini-2.0-flash-exp:free", "Modelos gratis ilimitados"),
             ("🟢 Cerebras", "cerebras", "llama-3.3-70b", "Ultra rápido, gratis"),
-            ("🟢 Groq", "groq", "llama-3.3-70b-versatile", "Rápido, 100K tokens/día"),
+            ("🟢 Groq", "groq", "llama-3.3-70b-versatile", "100K tokens/día"),
         ]
 
+        # Show each provider as a clickable button on its own line
         for label, provider, model, desc in free_providers:
             if provider == current_provider:
-                continue  # Skip current (rate-limited) provider
-            btn = tk.Button(
-                btn_frame, text=f"  {label}: {desc}  ",
-                font=("Consolas", 10, "bold"),
-                bg=C["bg3"], fg=C["accent"], activebackground=C["accent"], activeforeground=C["bg"],
-                relief="flat", bd=1, padx=10, pady=4, cursor="hand2",
-                command=lambda p=provider, m=model, t=original_text: self._switch_provider_and_retry(p, m, t)
-            )
-            btn.pack(side="left", padx=4, pady=4)
+                continue
+            try:
+                btn = tk.Button(
+                    self.output_text, text=f"  ▶ {label} — {desc}  ",
+                    font=("Consolas", 11, "bold"),
+                    bg=C["bg3"], fg=C["accent"], activebackground=C["accent"], activeforeground=C["bg"],
+                    relief="flat", bd=1, padx=15, pady=6, cursor="hand2", anchor="w",
+                    command=lambda p=provider, m=model, t=original_text: self._switch_provider_and_retry(p, m, t)
+                )
+                self.output_text.insert("end", "\n")
+                self.output_text.window_create("end", window=btn)
+            except Exception:
+                pass
 
         # "All Models" button
-        btn_all = tk.Button(
-            btn_frame, text="  📋 Ver Todos los Modelos  ",
-            font=("Consolas", 10, "bold"),
-            bg=C["bg3"], fg=C["yellow"], activebackground=C["yellow"], activeforeground=C["bg"],
-            relief="flat", bd=1, padx=10, pady=4, cursor="hand2",
-            command=self._show_model_switcher
-        )
-        btn_all.pack(side="left", padx=4, pady=4)
+        try:
+            btn_all = tk.Button(
+                self.output_text, text="  📋 Ver Todos los Modelos  ",
+                font=("Consolas", 11, "bold"),
+                bg=C["bg3"], fg=C["yellow"], activebackground=C["yellow"], activeforeground=C["bg"],
+                relief="flat", bd=1, padx=15, pady=6, cursor="hand2",
+                command=self._show_model_switcher
+            )
+            self.output_text.insert("end", "\n")
+            self.output_text.window_create("end", window=btn_all)
+        except Exception:
+            pass
 
-        self.output_text.window_create("end", window=btn_frame)
+        # Also show text commands as fallback
         self.output_text.insert("end", "\n\n")
+        self._print("  O escribe: cambiar a gemini / cambiar a openrouter / cambiar a cerebras", "muted")
+        self._print("  Ver todos: modelos\n", "muted")
         self.output_text.see("end")
 
     def _switch_provider_and_retry(self, provider, model, original_text):
