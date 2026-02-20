@@ -4137,36 +4137,36 @@ $steps = [math]::Round({level} / 2)
                 continue
             try:
                 btn = tk.Button(
-                    self.output_text, text=f"  ▶ {label} — {desc}  ",
+                    self.output, text=f"  ▶ {label} — {desc}  ",
                     font=("Consolas", 11, "bold"),
                     bg=C["bg3"], fg=C["accent"], activebackground=C["accent"], activeforeground=C["bg"],
                     relief="flat", bd=1, padx=15, pady=6, cursor="hand2", anchor="w",
                     command=lambda p=provider, m=model, t=original_text: self._switch_provider_and_retry(p, m, t)
                 )
-                self.output_text.insert("end", "\n")
-                self.output_text.window_create("end", window=btn)
+                self.output.insert("end", "\n")
+                self.output.window_create("end", window=btn)
             except Exception:
                 pass
 
         # "All Models" button
         try:
             btn_all = tk.Button(
-                self.output_text, text="  📋 Ver Todos los Modelos  ",
+                self.output, text="  📋 Ver Todos los Modelos  ",
                 font=("Consolas", 11, "bold"),
                 bg=C["bg3"], fg=C["yellow"], activebackground=C["yellow"], activeforeground=C["bg"],
                 relief="flat", bd=1, padx=15, pady=6, cursor="hand2",
                 command=self._show_model_switcher
             )
-            self.output_text.insert("end", "\n")
-            self.output_text.window_create("end", window=btn_all)
+            self.output.insert("end", "\n")
+            self.output.window_create("end", window=btn_all)
         except Exception:
             pass
 
         # Also show text commands as fallback
-        self.output_text.insert("end", "\n\n")
+        self.output.insert("end", "\n\n")
         self._print("  O escribe: cambiar a gemini / cambiar a openrouter / cambiar a cerebras", "muted")
         self._print("  Ver todos: modelos\n", "muted")
-        self.output_text.see("end")
+        self.output.see("end")
 
     def _switch_provider_and_retry(self, provider, model, original_text):
         """Switch to a different provider and retry the original message."""
